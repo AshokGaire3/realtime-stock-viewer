@@ -1,3 +1,9 @@
+// Mirrors backend/app/schemas.py — keep the two in sync; the client does no
+// reshaping of API responses.
+
+/** "live" = fetched from an upstream provider; "fallback" = synthetic demo data. */
+export type Source = 'live' | 'fallback';
+
 export interface StockData {
   symbol: string;
   name: string;
@@ -8,12 +14,21 @@ export interface StockData {
   marketCap?: number;
   high: number;
   low: number;
+  // Per-item: a list can mix live and fallback quotes when a provider only
+  // partially responds.
+  source: Source;
 }
 
 export interface ChartData {
   date: string;
   price: number;
   volume?: number;
+}
+
+export interface HistorySeries {
+  symbol: string;
+  source: Source;
+  points: ChartData[];
 }
 
 export interface CryptoData {
@@ -27,6 +42,36 @@ export interface CryptoData {
   total_volume: number;
   high_24h: number;
   low_24h: number;
+  source: Source;
+}
+
+export interface Indicators {
+  sma_20: number | null;
+  sma_50: number | null;
+  rsi_14: number | null;
+  volatility: number | null;
+}
+
+export interface PredictionPoint {
+  date: string;
+  predicted: number;
+  lower: number;
+  upper: number;
+}
+
+export interface PredictionResult {
+  symbol: string;
+  model: string;
+  generated_at: string;
+  current_price: number;
+  horizon_days: number;
+  trend: 'up' | 'down' | 'flat';
+  confidence: number;
+  forecast: PredictionPoint[];
+  indicators: Indicators;
+  /** Whether the forecast was fitted on real prices. */
+  data_source: Source;
+  disclaimer: string;
 }
 
 export interface Portfolio {

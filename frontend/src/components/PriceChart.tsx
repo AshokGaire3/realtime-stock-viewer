@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChartData } from '../types/financial';
+import { ChartData, Source } from '../types/financial';
 import { financialApi } from '../services/financialApi';
 import { format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
+import { DemoBadge } from './DemoBadge';
 
 interface PriceChartProps {
   symbol: string;
@@ -12,23 +13,31 @@ interface PriceChartProps {
 
 export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => {
   const [data, setData] = useState<ChartData[]>([]);
+  const [source, setSource] = useState<Source>('live');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // `days` seeds the range; the 7D/30D/90D buttons then drive it.
+  const [range, setRange] = useState(days);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      setError('');
       try {
-        const chartData = await financialApi.getHistoricalData(symbol, days);
-        setData(chartData);
-      } catch (error) {
-        console.error('Failed to fetch chart data:', error);
+        const series = await financialApi.getHistory(symbol, range);
+        setData(series.points);
+        setSource(series.source);
+      } catch (err) {
+        console.error('Failed to fetch chart data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load chart');
+        setData([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [symbol, days]);
+  }, [symbol, range]);
 
   const formatTooltipValue = (value: number, name: string) => {
     if (name === 'price') return [`$${value.toFixed(2)}`, 'Price'];
@@ -50,18 +59,33 @@ export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => 
     );
   }
 
+  if (error) {
+    return (
+      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400 font-medium">{error}</p>
+          <p className="text-gray-500 text-sm mt-1">Could not load {symbol} chart data.</p>
+        </div>
+      </div>
+    );
+  }
+
   const isPositiveTrend = data.length > 1 && data[data.length - 1].price > data[0].price;
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-white">{symbol} Price Chart</h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-xl font-bold text-white">{symbol} Price Chart</h3>
+          {source === 'fallback' && <DemoBadge />}
+        </div>
         <div className="flex gap-2">
           {[7, 30, 90].map((period) => (
             <button
               key={period}
+              onClick={() => setRange(period)}
               className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                days === period
+                range === period
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
               }`}
@@ -82,9 +106,12 @@ export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => 
               fontSize={12}
               tickFormatter={(value) => format(new Date(value), 'MMM dd')}
             />
-            <YAxis 
+            <YAxis
               stroke="#9CA3AF"
               fontSize={12}
+              // Recharts anchors at 0 by default, which flattens a $167-$185
+              // range into a straight line. Fit the axis to the data instead.
+              domain={['dataMin', 'dataMax']}
               tickFormatter={(value) => `$${value.toFixed(0)}`}
             />
             <Tooltip

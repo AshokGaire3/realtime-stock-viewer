@@ -19,7 +19,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [apiError, setApiError] = useState<string>('');
-  const [isLiveData, setIsLiveData] = useState(false);
   
   // Filter and sort states
   const [sortBy, setSortBy] = useState<'symbol' | 'price' | 'change' | 'volume'>('change');
@@ -37,12 +36,6 @@ function App() {
       setStocks(stockData);
       setCrypto(cryptoData);
       setLastUpdated(new Date());
-      
-      // Check if we're getting live data (basic heuristic)
-      const hasApiKey = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY && 
-                       import.meta.env.VITE_ALPHA_VANTAGE_API_KEY !== 'demo';
-      setIsLiveData(hasApiKey || stockData.length > 6);
-      
     } catch (error) {
       console.error('Failed to fetch data:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to fetch data');
@@ -101,6 +94,8 @@ function App() {
   ] as const;
 
   const filteredStocks = getFilteredAndSortedStocks();
+  // Live-vs-demo comes from the backend's own source tags, not a guess.
+  const liveCount = stocks.filter((stock) => stock.source === 'live').length;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -131,7 +126,7 @@ function App() {
               </button>
               
               <div className="hidden lg:block">
-                <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+                <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
               </div>
             </div>
           </div>
@@ -142,7 +137,7 @@ function App() {
       <div className="md:hidden p-4 bg-gray-800 border-b border-gray-700">
         <SearchBar onSelectStock={setSelectedStock} />
         <div className="mt-3">
-          <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+          <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
         </div>
       </div>
 
@@ -294,7 +289,7 @@ function App() {
               Real-time market data powered by Alpha Vantage, Finnhub, and CoinGecko APIs
             </p>
             <div className="flex justify-center items-center gap-4 text-xs">
-              <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+              <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
             </div>
             <p className="text-xs text-gray-500 pt-2">
               * This dashboard is for educational purposes. Not financial advice.

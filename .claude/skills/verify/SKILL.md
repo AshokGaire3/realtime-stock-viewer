@@ -68,8 +68,32 @@ driving the UI end-to-end, or set `BACKEND_URL`.
 Screenshot the affected UI and inspect it, and check the browser console for errors
 — required for any frontend change per CLAUDE.md.
 
-**Current state:** `frontend/src/services/financialApi.ts` still calls Alpha Vantage /
-Finnhub / CoinGecko **directly from the browser** with `VITE_*` keys — it is not yet
-wired to the backend proxy. Until that's done, the UI does not exercise the backend
-at all, and frontend types in `src/types/financial.ts` do **not** yet mirror
-`backend/app/schemas.py` (missing `source`, `HistorySeries`, `data_source`).
+The UI is wired to the backend proxy: `src/services/financialApi.ts` only calls
+`/api/*` and holds no upstream keys. **Run the backend first** or every panel errors.
+
+### Screenshotting
+
+Playwright's Chromium is already cached locally, and the driver is installed in
+`backend/.venv`:
+
+```python
+# backend/.venv/bin/python thisfile.py
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    page = p.chromium.launch().new_page(viewport={"width": 1440, "height": 900})
+    page.on("console", lambda m: print(m.type, m.text))     # console errors
+    page.on("response", lambda r: r.status >= 400 and print(r.status, r.url))
+    page.goto("http://localhost:5173/", wait_until="networkidle")
+    page.wait_for_timeout(2500)                              # let fetches settle
+    page.screenshot(path="/tmp/shot.png")
+```
+
+Tabs are `page.get_by_role("button", name="Stocks"|"Crypto"|"Charts")`. Then **Read
+the PNG and describe what you see** — that inspection is the point, not the capture.
+
+### What the UI should show in demo mode
+
+With no `.env`, expect **"Partly live (1/8)"** in the header, 8 stock cards with an
+amber **Demo** badge on all but MSFT, and live (unbadged) crypto. If every card is
+badged, the backend probably can't reach Alpha Vantage at all; if none are, someone
+added a real key.

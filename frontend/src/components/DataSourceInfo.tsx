@@ -75,14 +75,21 @@ export const DataSourceInfo: React.FC = () => {
                 <h4 className="font-semibold text-white mb-2">Setup Instructions</h4>
                 <div className="text-gray-300 space-y-1">
                   <p>1. Get a free API key from Alpha Vantage</p>
-                  <p>2. Copy .env.example to .env</p>
-                  <p>3. Add your API key to the .env file</p>
-                  <p>4. Restart the development server</p>
+                  <p>2. Copy <code className="text-blue-300">backend/.env.example</code> to <code className="text-blue-300">backend/.env</code></p>
+                  <p>3. Add your API key there and restart the backend</p>
                 </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Keys live on the server, never in the browser — this app requests all
+                  market data through its own backend.
+                </p>
               </div>
 
               <div className="text-xs text-gray-400 pt-2 border-t border-gray-700">
-                <p>* Without API keys, the dashboard uses demo data with realistic variations.</p>
+                <p>
+                  * Without a key, the dashboard falls back to simulated demo data. Anything
+                  synthetic is marked <span className="text-amber-300 font-medium">Demo</span> —
+                  those prices are not real quotes.
+                </p>
               </div>
             </div>
           </div>

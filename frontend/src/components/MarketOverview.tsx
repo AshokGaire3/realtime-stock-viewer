@@ -8,6 +8,10 @@ interface MarketOverviewProps {
 }
 
 export const MarketOverview: React.FC<MarketOverviewProps> = ({ stocks }) => {
+  // Don't claim "Live" unless every tracked quote actually is.
+  const liveCount = stocks.filter((stock) => stock.source === 'live').length;
+  const allLive = stocks.length > 0 && liveCount === stocks.length;
+
   const [marketData, setMarketData] = useState({
     totalMarketCap: 0,
     gainersCount: 0,
@@ -103,8 +107,8 @@ export const MarketOverview: React.FC<MarketOverviewProps> = ({ stocks }) => {
           <div className="p-2 bg-purple-900/30 rounded-lg">
             <BarChart3 className="w-6 h-6 text-purple-400" />
           </div>
-          <div className="text-sm text-purple-400">
-            Live
+          <div className={`text-sm ${allLive ? 'text-green-400' : 'text-amber-400'}`}>
+            {allLive ? 'Live' : `${liveCount}/${stocks.length} live`}
           </div>
         </div>
         <div className="text-2xl font-bold text-white mb-1">
