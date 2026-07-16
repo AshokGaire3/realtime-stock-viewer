@@ -5,12 +5,14 @@ Run with: uvicorn app.main:app --reload --port 8000
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.db import init_db
 from app.routers import market, predictions
+from app.services.providers import UnknownSymbolError
 
 settings = get_settings()
 
@@ -33,6 +35,12 @@ app.add_middleware(
 
 app.include_router(market.router)
 app.include_router(predictions.router)
+
+
+@app.exception_handler(UnknownSymbolError)
+async def unknown_symbol_handler(request: Request, exc: UnknownSymbolError) -> JSONResponse:
+    """One place to turn an unrecognised ticker into a 404 for every route."""
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
 @app.get("/api/health", tags=["meta"])

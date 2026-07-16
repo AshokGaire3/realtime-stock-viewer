@@ -1,8 +1,17 @@
 """Pydantic response models. Field names mirror the frontend TypeScript types
 in `frontend/src/types/financial.ts` so the client needs no reshaping.
+
+Every payload that can be synthesised carries a `source` so the UI can never
+present demo data as a live quote.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel
+
+# "live"     - fetched from an upstream provider
+# "fallback" - synthetic demo data (provider errored, rate-limited, or no key)
+Source = Literal["live", "fallback"]
 
 
 class StockData(BaseModel):
@@ -15,12 +24,23 @@ class StockData(BaseModel):
     marketCap: float | None = 0
     high: float
     low: float
+    # Per-item: a list may mix live and fallback quotes when a provider only
+    # partially responds (e.g. the Alpha Vantage demo key serves MSFT only).
+    source: Source = "live"
 
 
 class ChartData(BaseModel):
     date: str
     price: float
     volume: int | None = 0
+
+
+class HistorySeries(BaseModel):
+    """A price series. `source` applies to the whole series, not per point."""
+
+    symbol: str
+    source: Source
+    points: list[ChartData]
 
 
 class CryptoData(BaseModel):
@@ -34,6 +54,7 @@ class CryptoData(BaseModel):
     total_volume: float
     high_24h: float
     low_24h: float
+    source: Source = "live"
 
 
 class Indicators(BaseModel):
@@ -62,6 +83,9 @@ class PredictionResult(BaseModel):
     confidence: float  # 0..1, degrades as the band widens / fit is poor
     forecast: list[PredictionPoint]
     indicators: Indicators
+    # Whether the underlying history was real. A forecast fitted on synthetic
+    # demo prices is meaningless as a market signal and must say so.
+    data_source: Source
     disclaimer: str = (
         "Forecasts are statistical extrapolations for educational use only, "
         "not financial advice."

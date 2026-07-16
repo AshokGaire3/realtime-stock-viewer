@@ -6,7 +6,7 @@ API keys held server-side and responses cached to respect rate limits.
 
 from fastapi import APIRouter, Query
 
-from app.schemas import ChartData, CryptoData, StockData
+from app.schemas import CryptoData, HistorySeries, StockData
 from app.services import providers
 
 router = APIRouter(prefix="/api", tags=["market"])
@@ -27,12 +27,13 @@ async def crypto() -> list[CryptoData]:
     return await providers.get_crypto()
 
 
-@router.get("/history", response_model=list[ChartData])
+@router.get("/history", response_model=HistorySeries)
 async def history(
     symbol: str = Query(..., min_length=1),
     days: int = Query(30, ge=1, le=365),
-) -> list[ChartData]:
-    return await providers.get_historical(symbol, days)
+) -> HistorySeries:
+    points, source = await providers.get_historical(symbol, days)
+    return HistorySeries(symbol=symbol.upper(), source=source, points=points)
 
 
 @router.get("/search", response_model=list[StockData])
