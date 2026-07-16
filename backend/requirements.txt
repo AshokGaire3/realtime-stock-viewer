@@ -1,0 +1,24 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Persistence
+sqlmodel==0.0.22
+
+# ML / forecasting
+numpy==2.2.1
+pandas==2.2.3
+scikit-learn==1.6.1
+
+# AI tutor
+anthropic==0.42.0
+
+# Tests
+pytest==8.3.4
+pytest-asyncio==0.25.1
+
+# NOTE: Prophet and torch (LSTM) are added in Phase 2/5. Prophet in particular
+# has heavier build deps; the sklearn baseline works without them.
