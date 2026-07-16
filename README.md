@@ -1,82 +1,58 @@
-# 📈 Realtime Stock Viewer
+# Realtime Stock Viewer — AI Prediction & Learning Platform
 
-An interactive web-based dashboard for live financial market data. Built with React, TypeScript, and modern web technologies to display real-time stock prices, cryptocurrency data, and dynamic charts.
+An interactive platform to **watch live markets**, **predict** price movement with real ML,
+and **learn** about investing through an AI tutor, interactive indicator explainers, guided
+lessons, and a paper-trading simulator.
 
-## ✨ Features
+This is a monorepo:
 
-- 📊 **Live Stock Data** - Real-time stock prices from Alpha Vantage & Finnhub APIs
-- 💰 **Crypto Tracking** - Live cryptocurrency prices from CoinGecko API  
-- 📈 **Interactive Charts** - Historical price charts with multiple timeframes
-- 🔍 **Smart Search** - Real-time search with autocomplete
-- 📱 **Responsive Design** - Optimized for desktop, tablet, and mobile
-- 🎨 **Modern UI** - Clean dark theme with smooth animations
-
-## 🛠️ Tech Stack
-
-- **React 18** + **TypeScript** - Modern frontend framework
-- **Tailwind CSS** - Utility-first styling
-- **Recharts** - Interactive data visualization
-- **Vite** - Fast build tool and dev server
-- **Lucide React** - Beautiful icons
-
-## � Quick Start
-
-1. **Clone the repository**
-```bash
-git clone https://github.com/ashokgaire3/realtime-stock-viewer.git
-cd realtime-stock-viewer
+```
+frontend/   React 18 + TypeScript + Vite + Tailwind + Recharts  (the UI)
+backend/    FastAPI (Python)                                     (data proxy, ML, AI tutor, DB)
 ```
 
-2. **Install dependencies**
+## Why a backend?
+
+The original app called Alpha Vantage / Finnhub / CoinGecko directly from the browser, which
+**exposed the API keys publicly** and hit free-tier **rate limits**. The backend now:
+
+- Holds all upstream API keys server-side and **proxies** market data (`/api/quote`, `/api/history`).
+- **Caches** responses to stay under rate limits.
+- Runs **ML price predictions** (Prophet / scikit-learn, optional LSTM) — `/api/predict`.
+- Hosts an **AI tutor + indicator explainers** via the Claude API — `/api/tutor`, `/api/explain`.
+- Persists **paper trading** and **lesson progress** in SQLite.
+
+> ⚠️ Predictions are educational estimates, **not financial advice**.
+
+## Quick start
+
+### 1. Backend
+
 ```bash
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env        # fill in ALPHA_VANTAGE_API_KEY, FINNHUB_API_KEY, ANTHROPIC_API_KEY
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
 npm install
+npm run dev                 # Vite dev server proxies /api → http://localhost:8000
 ```
 
-3. **Set up environment variables** (optional)
-```bash
-cp .env.example .env
-```
-Add your API keys to `.env`:
-```env
-VITE_ALPHA_VANTAGE_API_KEY=your_api_key_here
-VITE_FINNHUB_API_KEY=your_api_key_here
-```
+Open the printed Vite URL. The frontend talks only to the backend; no API keys ship to the browser.
 
-4. **Start the development server**
-```bash
-npm run dev
-```
+## Environment variables (backend `.env`)
 
-Visit `http://localhost:5173` to view the dashboard.
-
-## 🔑 API Keys (Optional)
-
-The app works with demo data, but for live data get free API keys:
-- [Alpha Vantage](https://www.alphavantage.co/support/#api-key) - Stock market data
-- [Finnhub](https://finnhub.io/register) - Additional stock data
-- CoinGecko API - No key required for crypto data
-
-## 📦 Build & Deploy
-
-```bash
-npm run build
-```
-
-Deploy the `dist/` folder to any static hosting service like Netlify, Vercel, or GitHub Pages.
-
-## � Key Features
-
-- **Market Overview** - Real-time market summary and top movers
-- **Stock Cards** - Detailed stock information with live updates  
-- **Crypto Cards** - Cryptocurrency prices and 24h changes
-- **Price Charts** - Interactive historical price visualization
-- **Filtering & Sorting** - Advanced data filtering options
-- **Mobile Responsive** - Works seamlessly on all devices
-
-## 📄 License
-
-MIT License - feel free to use this project for learning or portfolio purposes!
-
----
-
-**Built with ❤️ by [Ashok Gaire](https://github.com/ashokgaire3)**
+| Variable                  | Purpose                                            |
+| ------------------------- | -------------------------------------------------- |
+| `ALPHA_VANTAGE_API_KEY`   | Stock quotes & daily history                        |
+| `FINNHUB_API_KEY`         | Backup stock quotes                                 |
+| `ANTHROPIC_API_KEY`       | Claude API for the AI tutor & explainers            |
+| `ANTHROPIC_MODEL`         | Optional; defaults to `claude-opus-4-8`             |
+| `DATABASE_URL`            | Optional; defaults to `sqlite:///./stockviewer.db`  |
+| `CORS_ORIGINS`            | Optional; comma-separated allowed origins           |
