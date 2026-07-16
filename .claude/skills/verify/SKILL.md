@@ -88,8 +88,15 @@ with sync_playwright() as p:
     page.screenshot(path="/tmp/shot.png")
 ```
 
-Tabs are `page.get_by_role("button", name="Stocks"|"Crypto"|"Charts")`. Then **Read
-the PNG and describe what you see** — that inspection is the point, not the capture.
+Tabs are `page.get_by_role("button", name="Stocks"|"Crypto"|"Charts"|"Predict")`. Then
+**Read the PNG and describe what you see** — that inspection is the point, not the
+capture.
+
+To test a Recharts tooltip, hover **`.recharts-cartesian-grid`**, not
+`.recharts-surface`: on a chart with a legend, `.recharts-surface` also matches each
+14px legend swatch, so `.first` grabs a swatch and the tooltip never fires. That
+looks exactly like a broken tooltip and isn't. Recharts also needs a few small
+`mouse.move` steps, not one jump.
 
 ### What the UI should show in demo mode
 

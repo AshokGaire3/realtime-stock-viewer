@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Bitcoin, Search, RefreshCw, Settings } from 'lucide-react';
+import { BarChart3, TrendingUp, Bitcoin, RefreshCw, Sparkles } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { CryptoCard } from './components/CryptoCard';
 import { PriceChart } from './components/PriceChart';
@@ -8,6 +8,7 @@ import { SearchBar } from './components/SearchBar';
 import { FilterControls } from './components/FilterControls';
 import { ApiStatus } from './components/ApiStatus';
 import { DataSourceInfo } from './components/DataSourceInfo';
+import { PredictionPanel } from './components/PredictionPanel';
 import { financialApi } from './services/financialApi';
 import { StockData, CryptoData } from './types/financial';
 
@@ -15,7 +16,7 @@ function App() {
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [crypto, setCrypto] = useState<CryptoData[]>([]);
   const [selectedStock, setSelectedStock] = useState<string>('AAPL');
-  const [activeTab, setActiveTab] = useState<'overview' | 'stocks' | 'crypto' | 'charts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'stocks' | 'crypto' | 'charts' | 'predict'>('overview');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [apiError, setApiError] = useState<string>('');
@@ -91,6 +92,7 @@ function App() {
     { id: 'stocks', label: 'Stocks', icon: TrendingUp },
     { id: 'crypto', label: 'Crypto', icon: Bitcoin },
     { id: 'charts', label: 'Charts', icon: BarChart3 },
+    { id: 'predict', label: 'Predict', icon: Sparkles },
   ] as const;
 
   const filteredStocks = getFilteredAndSortedStocks();
@@ -267,6 +269,33 @@ function App() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'predict' && (
+          <div>
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-bold text-white">Price Prediction</h2>
+              <div className="text-sm text-gray-400">Viewing {selectedStock}</div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6">
+              {stocks.map((stock) => (
+                <button
+                  key={stock.symbol}
+                  onClick={() => setSelectedStock(stock.symbol)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    selectedStock === stock.symbol
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-600'
+                  }`}
+                >
+                  {stock.symbol}
+                </button>
+              ))}
+            </div>
+
+            <PredictionPanel symbol={selectedStock} />
           </div>
         )}
 
