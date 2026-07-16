@@ -34,3 +34,35 @@ class CryptoData(BaseModel):
     total_volume: float
     high_24h: float
     low_24h: float
+
+
+class Indicators(BaseModel):
+    """Technical indicators derived from recent price history."""
+
+    sma_20: float | None = None
+    sma_50: float | None = None
+    rsi_14: float | None = None
+    volatility: float | None = None  # annualized stdev of daily returns
+
+
+class PredictionPoint(BaseModel):
+    date: str
+    predicted: float
+    lower: float  # lower bound of the confidence band
+    upper: float  # upper bound of the confidence band
+
+
+class PredictionResult(BaseModel):
+    symbol: str
+    model: str  # which model produced the forecast, e.g. "linear-trend"
+    generated_at: str
+    current_price: float
+    horizon_days: int
+    trend: str  # "up" | "down" | "flat"
+    confidence: float  # 0..1, degrades as the band widens / fit is poor
+    forecast: list[PredictionPoint]
+    indicators: Indicators
+    disclaimer: str = (
+        "Forecasts are statistical extrapolations for educational use only, "
+        "not financial advice."
+    )

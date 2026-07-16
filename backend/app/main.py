@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import init_db
-from app.routers import market
+from app.routers import market, predictions
 
 settings = get_settings()
 
@@ -32,6 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(market.router)
+app.include_router(predictions.router)
 
 
 @app.get("/api/health", tags=["meta"])
