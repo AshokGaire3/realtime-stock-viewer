@@ -34,8 +34,7 @@ Forecaster = "Callable[[np.ndarray, int], tuple[np.ndarray, np.ndarray]]"
 
 def _linear_trend(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
     """The shipped model (app/services/predictions.py)."""
-    forecast, band, _r2 = _fit_and_forecast(prices, horizon)
-    return forecast, band
+    return _fit_and_forecast(prices, horizon)
 
 
 def _random_walk(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:

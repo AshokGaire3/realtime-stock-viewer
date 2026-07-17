@@ -60,6 +60,17 @@ export interface PredictionPoint {
   upper: number;
 }
 
+/** Measured out-of-sample accuracy from the backtest — not a self-assessed score. */
+export interface ModelAccuracy {
+  horizon_days: number;
+  /** Typical error at this horizon, percent. */
+  mape: number;
+  /** Random-walk ("price won't change") over the same origins. */
+  baseline_mape: number;
+  beats_baseline: boolean;
+  n_forecasts: number;
+}
+
 export interface PredictionResult {
   symbol: string;
   model: string;
@@ -67,7 +78,8 @@ export interface PredictionResult {
   current_price: number;
   horizon_days: number;
   trend: 'up' | 'down' | 'flat';
-  confidence: number;
+  /** Null until a backtest has been run. */
+  accuracy: ModelAccuracy | null;
   forecast: PredictionPoint[];
   indicators: Indicators;
   /** Whether the forecast was fitted on real prices. */

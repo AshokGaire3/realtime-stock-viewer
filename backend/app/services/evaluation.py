@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from sqlmodel import Session, select
 
 from app.models import ForecastPoint, ForecastRun
+from app.schemas import ModelAccuracy
 
 
 @dataclass
@@ -74,6 +75,29 @@ def metrics_by_horizon(
             )
         )
     return out
+
+
+def accuracy_for(
+    session: Session, model: str, horizon: int, baseline: str = "random-walk"
+) -> ModelAccuracy | None:
+    """Measured accuracy for one model at one horizon, for the live endpoint.
+
+    Returns None when no backtest has been run — the endpoint then reports no
+    accuracy at all, which is the honest answer. Inventing a number here is the
+    exact failure we removed.
+    """
+    metrics = metrics_by_horizon(session, steps=[horizon])
+    by_model = {m.model: m for m in metrics}
+    me, base = by_model.get(model), by_model.get(baseline)
+    if me is None or base is None:
+        return None
+    return ModelAccuracy(
+        horizon_days=horizon,
+        mape=round(me.mape, 2),
+        baseline_mape=round(base.mape, 2),
+        beats_baseline=me.mae < base.mae,
+        n_forecasts=me.n,
+    )
 
 
 def format_report(metrics: list[HorizonMetrics], baseline: str = "random-walk") -> str:
