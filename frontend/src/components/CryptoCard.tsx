@@ -1,6 +1,7 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, Bitcoin, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Coins, DollarSign } from 'lucide-react';
 import { CryptoData } from '../types/financial';
+import { rangePosition } from '../utils/range';
 
 interface CryptoCardProps {
   crypto: CryptoData;
@@ -31,7 +32,11 @@ export const CryptoCard: React.FC<CryptoCardProps> = ({ crypto, onClick }) => {
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-yellow-500/20 rounded-lg">
-            <Bitcoin className="w-5 h-5 text-yellow-400" />
+            {crypto.image ? (
+              <img src={crypto.image} alt="" className="w-5 h-5" />
+            ) : (
+              <Coins className="w-5 h-5 text-yellow-400" />
+            )}
           </div>
           <div>
             <h3 className="text-xl font-bold text-white">{crypto.symbol.toUpperCase()}</h3>
@@ -84,7 +89,7 @@ export const CryptoCard: React.FC<CryptoCardProps> = ({ crypto, onClick }) => {
                 ? 'bg-gradient-to-r from-green-600 to-green-400' 
                 : 'bg-gradient-to-r from-red-600 to-red-400'
             }`}
-            style={{ width: `${Math.min(Math.abs(crypto.price_change_percentage_24h) * 2, 100)}%` }}
+            style={{ width: `${rangePosition(crypto.current_price, crypto.low_24h, crypto.high_24h)}%` }}
           ></div>
         </div>
       </div>

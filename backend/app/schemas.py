@@ -54,6 +54,8 @@ class CryptoData(BaseModel):
     total_volume: float
     high_24h: float
     low_24h: float
+    # Upstream logo URL; absent for synthetic fallback coins.
+    image: str | None = None
     source: Source = "live"
 
 

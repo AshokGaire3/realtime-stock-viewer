@@ -1,0 +1,40 @@
+# Render blueprint: StockLab backend (FastAPI) + managed Postgres.
+# Deploy with: Render Dashboard → New → Blueprint → point at this repo.
+#
+# The frontend is NOT here — it deploys to Vercel from frontend/ (see README).
+
+services:
+  - type: web
+    name: stocklab-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # $PORT is injected by Render; binding to 0.0.0.0 is required or the health
+    # check can't reach the process.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stocklab-db
+          property: connectionString
+      # Secrets are left unset here on purpose: sync:false makes Render prompt
+      # for them at deploy time instead of committing them to the repo.
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Set to the production Vercel URL, e.g. https://stocklab.vercel.app
+      - key: CORS_ORIGINS
+        sync: false
+      # Allows Vercel preview deploys (random per-branch hostnames) to call the API.
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://.*\.vercel\.app$
+
+databases:
+  - name: stocklab-db
+    plan: free
+    databaseName: stocklab

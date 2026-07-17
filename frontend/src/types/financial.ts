@@ -42,6 +42,7 @@ export interface CryptoData {
   total_volume: number;
   high_24h: number;
   low_24h: number;
+  image: string | null;
   source: Source;
 }
 
