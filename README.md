@@ -43,10 +43,10 @@ The database schema in [`backend/app/models.py`](backend/app/models.py) defines 
 **paper trading** (`Holding`, `Trade`), **lesson progress** (`LessonProgress`), and
 **forecast accuracy evaluation** (`PriceBar`, `ForecastRun`, `ForecastPoint`). The paper-trading
 and lesson tables are created at startup but **no endpoints read or write them yet** — the
-schema is groundwork, not a working feature. The evaluation tables *are* used, by the
-backfill/backtest scripts (see below), though not by any endpoint. Likewise the **AI tutor**
-and **indicator explainers** are planned, not implemented; `ANTHROPIC_API_KEY` is currently
-unused.
+schema is groundwork, not a working feature. The evaluation tables are written by the
+backfill/backtest scripts and read by `/api/predict` — see
+[Seeding the database](#seeding-the-database). Likewise the **AI tutor** and **indicator
+explainers** are planned, not implemented; `ANTHROPIC_API_KEY` is currently unused.
 
 The forecast model is a scikit-learn baseline. Prophet and LSTM are deliberately not
 installed — they carry heavy build dependencies, and the baseline is what's honest to ship.
@@ -73,6 +73,40 @@ npm run dev                 # Vite proxies /api → http://localhost:8000
 
 Open the printed Vite URL. It runs without any API keys; every value sourced from fallback
 data is badged as demo in the UI.
+
+## Seeding the database
+
+`/api/predict` reports **measured** accuracy — looked up from scored backtests, never derived
+from the fit. On an empty database there is nothing to look up, so `accuracy_for()` returns
+`None` and the endpoint reports no accuracy at all. That's deliberate: inventing a confidence
+number is the failure this replaced. Everything else works fine unseeded.
+
+To populate it, run both scripts from `backend/` with the venv active:
+
+```bash
+# 1. Real daily bars via yfinance → the PriceBar corpus. Idempotent: re-running
+#    only inserts dates not already stored.
+python -m scripts.backfill --period 10y
+
+# 2. Walk-forward backtest → scored ForecastPoints. Wipes prior backtest runs
+#    and recomputes, so re-running is safe. Prints an accuracy table when done.
+python -m scripts.backtest --horizon 30 --stride 5
+```
+
+Both default to the eight symbols in `POPULAR_STOCKS` (AAPL, GOOGL, MSFT, TSLA, AMZN, NVDA,
+META, NFLX); pass `--symbols AAPL,MSFT` to narrow. The backtest fits models at many origins
+across every symbol, so it takes a while.
+
+To seed a **deployed** database, point `DATABASE_URL` at it first. Render's free tier has no
+shell, so run this from your machine using the **External** Database URL (the Internal one
+only resolves inside Render's network):
+
+```bash
+DATABASE_URL="postgres://...render.com/stocklab" python -m scripts.backfill --period 10y
+DATABASE_URL="postgres://...render.com/stocklab" python -m scripts.backtest
+```
+
+The `postgres://` scheme Render hands out is normalised for SQLAlchemy automatically.
 
 ## Configuration (backend `.env`)
 
