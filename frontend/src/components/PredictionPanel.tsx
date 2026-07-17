@@ -228,7 +228,10 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
             </span>
           </div>
         </div>
-        <Stat label="Model confidence" value={`${(prediction.confidence * 100).toFixed(0)}%`} />
+        <Stat
+          label={`Typical error at ${prediction.horizon_days}d`}
+          value={prediction.accuracy ? `±${prediction.accuracy.mape.toFixed(1)}%` : 'Not measured'}
+        />
         <Stat label="RSI (14)" value={prediction.indicators.rsi_14?.toFixed(1) ?? '—'} />
         <Stat
           label="Volatility (annualized)"
@@ -240,9 +243,25 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
         />
       </div>
 
+      {prediction.accuracy && !prediction.accuracy.beats_baseline && (
+        <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-4">
+          <p className="text-amber-200 text-sm font-medium">
+            This model does not beat assuming the price stays flat.
+          </p>
+          <p className="text-amber-200/70 text-xs mt-1">
+            Over {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts, it was off
+            by {prediction.accuracy.mape.toFixed(1)}% on average at {prediction.accuracy.horizon_days}{' '}
+            days, versus {prediction.accuracy.baseline_mape.toFixed(1)}% for simply predicting no
+            change. Treat the line above as an illustration of trend, not a signal to act on.
+          </p>
+        </div>
+      )}
+
       <p className="text-xs text-gray-500">
         {prediction.data_source === 'fallback' &&
           'This forecast was fitted on simulated demo prices, so the numbers above describe mock data, not the market. '}
+        {!prediction.accuracy &&
+          'Accuracy has not been measured for this model — run the backtest to find out how wrong it typically is. '}
         {prediction.disclaimer}
       </p>
     </div>

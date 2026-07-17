@@ -75,6 +75,22 @@ class PredictionPoint(BaseModel):
     upper: float  # upper bound of the confidence band
 
 
+class ModelAccuracy(BaseModel):
+    """How wrong this model actually was, measured out-of-sample.
+
+    Sourced from the walk-forward backtest, not from the fit. An in-sample R^2
+    says how well a line was drawn through prices we already had; it says
+    nothing about tomorrow, and presenting it as "confidence" overstates the
+    model. These numbers are what the model scored against real history.
+    """
+
+    horizon_days: int
+    mape: float  # typical error at this horizon, percent
+    baseline_mape: float  # random-walk ("price won't change") over the same origins
+    beats_baseline: bool  # does the model actually improve on assuming no change?
+    n_forecasts: int  # sample size behind these figures
+
+
 class PredictionResult(BaseModel):
     symbol: str
     model: str  # which model produced the forecast, e.g. "linear-trend"
@@ -82,7 +98,10 @@ class PredictionResult(BaseModel):
     current_price: float
     horizon_days: int
     trend: str  # "up" | "down" | "flat"
-    confidence: float  # 0..1, degrades as the band widens / fit is poor
+    # Measured accuracy, or None when no backtest has been run yet. Deliberately
+    # not a "confidence" score: we report the error we observed, not a
+    # self-assessment derived from the model's own fit.
+    accuracy: ModelAccuracy | None = None
     forecast: list[PredictionPoint]
     indicators: Indicators
     # Whether the underlying history was real. A forecast fitted on synthetic
