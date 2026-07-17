@@ -219,6 +219,7 @@ async def get_crypto() -> list[CryptoData]:
                 total_volume=c.get("total_volume") or 0,
                 high_24h=c.get("high_24h") or 0,
                 low_24h=c.get("low_24h") or 0,
+                image=c.get("image"),
                 source="live",
             )
             for c in coins

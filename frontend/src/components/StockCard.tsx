@@ -2,6 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from 'lucide-react';
 import { StockData } from '../types/financial';
 import { DemoBadge } from './DemoBadge';
+import { rangePosition } from '../utils/range';
 
 interface StockCardProps {
   stock: StockData;
@@ -66,7 +67,7 @@ export const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
             className={`h-2 rounded-full transition-all duration-500 ${
               isPositive ? 'bg-gradient-to-r from-green-600 to-green-400' : 'bg-gradient-to-r from-red-600 to-red-400'
             }`}
-            style={{ width: `${Math.min(Math.abs(stock.changePercent) * 10, 100)}%` }}
+            style={{ width: `${rangePosition(stock.price, stock.low, stock.high)}%` }}
           ></div>
         </div>
       </div>
