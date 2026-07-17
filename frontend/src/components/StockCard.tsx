@@ -1,6 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from 'lucide-react';
 import { StockData } from '../types/financial';
+import { DemoBadge } from './DemoBadge';
 
 interface StockCardProps {
   stock: StockData;
@@ -25,7 +26,10 @@ export const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
     >
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-xl font-bold text-white">{stock.symbol}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-xl font-bold text-white">{stock.symbol}</h3>
+            {stock.source === 'fallback' && <DemoBadge />}
+          </div>
           <p className="text-gray-400 text-sm">{stock.name}</p>
         </div>
         <div className={`p-2 rounded-lg ${isPositive ? 'bg-green-900/30' : 'bg-red-900/30'}`}>

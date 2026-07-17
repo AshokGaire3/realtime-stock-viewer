@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Bitcoin, Search, RefreshCw, Settings } from 'lucide-react';
+import { BarChart3, TrendingUp, Bitcoin, RefreshCw, Sparkles } from 'lucide-react';
 import { StockCard } from './components/StockCard';
 import { CryptoCard } from './components/CryptoCard';
 import { PriceChart } from './components/PriceChart';
@@ -8,6 +8,7 @@ import { SearchBar } from './components/SearchBar';
 import { FilterControls } from './components/FilterControls';
 import { ApiStatus } from './components/ApiStatus';
 import { DataSourceInfo } from './components/DataSourceInfo';
+import { PredictionPanel } from './components/PredictionPanel';
 import { financialApi } from './services/financialApi';
 import { StockData, CryptoData } from './types/financial';
 
@@ -15,11 +16,10 @@ function App() {
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [crypto, setCrypto] = useState<CryptoData[]>([]);
   const [selectedStock, setSelectedStock] = useState<string>('AAPL');
-  const [activeTab, setActiveTab] = useState<'overview' | 'stocks' | 'crypto' | 'charts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'stocks' | 'crypto' | 'charts' | 'predict'>('overview');
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [apiError, setApiError] = useState<string>('');
-  const [isLiveData, setIsLiveData] = useState(false);
   
   // Filter and sort states
   const [sortBy, setSortBy] = useState<'symbol' | 'price' | 'change' | 'volume'>('change');
@@ -37,12 +37,6 @@ function App() {
       setStocks(stockData);
       setCrypto(cryptoData);
       setLastUpdated(new Date());
-      
-      // Check if we're getting live data (basic heuristic)
-      const hasApiKey = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY && 
-                       import.meta.env.VITE_ALPHA_VANTAGE_API_KEY !== 'demo';
-      setIsLiveData(hasApiKey || stockData.length > 6);
-      
     } catch (error) {
       console.error('Failed to fetch data:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to fetch data');
@@ -98,9 +92,12 @@ function App() {
     { id: 'stocks', label: 'Stocks', icon: TrendingUp },
     { id: 'crypto', label: 'Crypto', icon: Bitcoin },
     { id: 'charts', label: 'Charts', icon: BarChart3 },
+    { id: 'predict', label: 'Predict', icon: Sparkles },
   ] as const;
 
   const filteredStocks = getFilteredAndSortedStocks();
+  // Live-vs-demo comes from the backend's own source tags, not a guess.
+  const liveCount = stocks.filter((stock) => stock.source === 'live').length;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -131,7 +128,7 @@ function App() {
               </button>
               
               <div className="hidden lg:block">
-                <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+                <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
               </div>
             </div>
           </div>
@@ -142,7 +139,7 @@ function App() {
       <div className="md:hidden p-4 bg-gray-800 border-b border-gray-700">
         <SearchBar onSelectStock={setSelectedStock} />
         <div className="mt-3">
-          <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+          <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
         </div>
       </div>
 
@@ -275,6 +272,33 @@ function App() {
           </div>
         )}
 
+        {activeTab === 'predict' && (
+          <div>
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-3xl font-bold text-white">Price Prediction</h2>
+              <div className="text-sm text-gray-400">Viewing {selectedStock}</div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-6">
+              {stocks.map((stock) => (
+                <button
+                  key={stock.symbol}
+                  onClick={() => setSelectedStock(stock.symbol)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    selectedStock === stock.symbol
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-600'
+                  }`}
+                >
+                  {stock.symbol}
+                </button>
+              ))}
+            </div>
+
+            <PredictionPanel symbol={selectedStock} />
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-3 text-gray-400">
@@ -294,7 +318,7 @@ function App() {
               Real-time market data powered by Alpha Vantage, Finnhub, and CoinGecko APIs
             </p>
             <div className="flex justify-center items-center gap-4 text-xs">
-              <ApiStatus isLive={isLiveData} lastUpdated={lastUpdated} error={apiError} />
+              <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
             </div>
             <p className="text-xs text-gray-500 pt-2">
               * This dashboard is for educational purposes. Not financial advice.

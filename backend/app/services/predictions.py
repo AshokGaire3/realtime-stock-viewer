@@ -78,7 +78,9 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     if (hit := await cache.get(cache_key)) is not None:
         return hit
 
-    history = await providers.get_historical(symbol, TRAIN_DAYS)
+    # Raises UnknownSymbolError for unrecognised tickers rather than forecasting
+    # invented prices; the router turns that into a 404.
+    history, data_source = await providers.get_historical(symbol, TRAIN_DAYS)
     prices = np.array([h.price for h in history], dtype=float)
     current_price = float(prices[-1])
 
@@ -113,6 +115,7 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
         confidence=confidence,
         forecast=points,
         indicators=_compute_indicators(prices),
+        data_source=data_source,
     )
     await cache.set(cache_key, result, PREDICT_TTL)
     return result
