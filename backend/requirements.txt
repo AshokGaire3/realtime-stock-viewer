@@ -5,13 +5,18 @@ httpx==0.28.1
 pydantic==2.10.4
 pydantic-settings==2.7.1
 
-# Persistence
+# Persistence (psycopg is the Postgres driver used in production; SQLite is stdlib)
 sqlmodel==0.0.22
+psycopg[binary]==3.2.3
 
 # ML / forecasting
 numpy==2.2.1
 pandas==2.2.3
 scikit-learn==1.6.1
+
+# Historical price corpus for backtesting (server-side only). Note: versions
+# below 1.x break against Yahoo's current auth and return empty frames.
+yfinance==1.5.1
 
 # AI tutor
 anthropic==0.42.0

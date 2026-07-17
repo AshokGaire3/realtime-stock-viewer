@@ -11,11 +11,17 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.config import get_settings
 
 _settings = get_settings()
-# check_same_thread=False lets FastAPI's threadpool share the SQLite connection.
+_url = _settings.sqlalchemy_url
+_is_sqlite = _url.startswith("sqlite")
+
 engine = create_engine(
-    _settings.database_url,
+    _url,
     echo=False,
-    connect_args={"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {},
+    # check_same_thread=False lets FastAPI's threadpool share the SQLite connection.
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    # Managed Postgres drops idle connections; without pre-ping the first query
+    # after an idle period fails on a stale pooled connection.
+    pool_pre_ping=not _is_sqlite,
 )
 
 

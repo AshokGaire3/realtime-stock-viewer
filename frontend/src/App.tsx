@@ -109,7 +109,7 @@ function App() {
               <div className="p-2 bg-blue-600 rounded-lg">
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-2xl font-bold text-white">FinanceHub</h1>
+              <h1 className="text-2xl font-bold text-white">StockLab</h1>
             </div>
             
             <div className="flex items-center gap-4">
@@ -313,7 +313,7 @@ function App() {
       <footer className="bg-gray-800 border-t border-gray-700 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-gray-400 space-y-2">
-            <p className="text-lg font-semibold text-white">FinanceHub - Live Financial Data Dashboard</p>
+            <p className="text-lg font-semibold text-white">StockLab — Live Markets & ML Price Predictions</p>
             <p className="text-sm">
               Real-time market data powered by Alpha Vantage, Finnhub, and CoinGecko APIs
             </p>

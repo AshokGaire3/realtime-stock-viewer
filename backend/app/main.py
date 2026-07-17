@@ -23,7 +23,13 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Stock Viewer API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="StockLab API",
+    description="Market-data proxy and ML price predictions for StockLab. "
+    "Upstream API keys stay server-side; the browser only ever talks to this API.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
