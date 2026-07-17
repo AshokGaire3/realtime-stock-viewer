@@ -14,6 +14,10 @@ numpy==2.2.1
 pandas==2.2.3
 scikit-learn==1.6.1
 
+# Historical price corpus for backtesting (server-side only). Note: versions
+# below 1.x break against Yahoo's current auth and return empty frames.
+yfinance==1.5.1
+
 # AI tutor
 anthropic==0.42.0
 

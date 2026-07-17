@@ -40,10 +40,13 @@ Interactive API docs are at `/docs` on any running backend.
 ### Not built yet
 
 The database schema in [`backend/app/models.py`](backend/app/models.py) defines tables for
-**paper trading** (`Holding`, `Trade`) and **lesson progress** (`LessonProgress`). The tables
-are created at startup, but **no endpoints read or write them yet** — the schema is
-groundwork, not a working feature. Likewise the **AI tutor** and **indicator explainers** are
-planned, not implemented; `ANTHROPIC_API_KEY` is currently unused.
+**paper trading** (`Holding`, `Trade`), **lesson progress** (`LessonProgress`), and
+**forecast accuracy evaluation** (`PriceBar`, `ForecastRun`, `ForecastPoint`). The paper-trading
+and lesson tables are created at startup but **no endpoints read or write them yet** — the
+schema is groundwork, not a working feature. The evaluation tables *are* used, by the
+backfill/backtest scripts (see below), though not by any endpoint. Likewise the **AI tutor**
+and **indicator explainers** are planned, not implemented; `ANTHROPIC_API_KEY` is currently
+unused.
 
 The forecast model is a scikit-learn baseline. Prophet and LSTM are deliberately not
 installed — they carry heavy build dependencies, and the baseline is what's honest to ship.
@@ -117,6 +120,10 @@ erased on every deploy.
    supplies the build settings and the SPA rewrite.)
 3. Add an environment variable: `VITE_API_BASE` = your Render URL from step 1.
 4. Deploy.
+
+> `VITE_API_BASE` is baked in at **build time**, not read at runtime. If it's missing the
+> build still succeeds, but the app calls its own Vercel origin and every request 404s — so
+> set it before deploying, and redeploy (not just restart) after changing it.
 
 ### 3. Close the CORS loop
 
