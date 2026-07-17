@@ -5,8 +5,9 @@ httpx==0.28.1
 pydantic==2.10.4
 pydantic-settings==2.7.1
 
-# Persistence
+# Persistence (psycopg is the Postgres driver used in production; SQLite is stdlib)
 sqlmodel==0.0.22
+psycopg[binary]==3.2.3
 
 # ML / forecasting
 numpy==2.2.1
