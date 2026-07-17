@@ -2,10 +2,15 @@
 
 A deliberately simple, explainable scikit-learn baseline: we fit a linear
 regression on *log* prices against a time index (so the forecast compounds
-rather than going negative), then project forward. The confidence band widens
-with the square root of the horizon to reflect growing uncertainty, and the
-reported `confidence` blends the in-sample fit (R^2) with how wide that band
-gets relative to price.
+rather than going negative), anchor it to the last observed close, and project
+forward. The band widens with the square root of the horizon to reflect growing
+uncertainty.
+
+**On accuracy:** the reported figures come from the walk-forward backtest
+(`scripts/backtest.py`), never from the model's own fit. Backtested over 10
+years of real prices, this model does not beat a random walk at any horizon —
+it ties at 1 day and loses by ~15% MAE at 30. `ModelAccuracy` carries that fact
+to the client rather than hiding it behind a self-assessed score.
 
 Heavier models (Prophet, LSTM) are slotted for a later phase behind the same
 interface; the router only ever sees `PredictionResult`.
@@ -17,10 +22,15 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sqlmodel import Session
 
+from app.db import engine
 from app.schemas import Indicators, PredictionPoint, PredictionResult
 from app.services import providers
 from app.services.cache import cache
+from app.services.evaluation import accuracy_for
+
+MODEL_NAME = "linear-trend"
 
 # Train on this many days of history and cache each forecast briefly so repeated
 # loads of the same symbol don't refit.
@@ -51,14 +61,13 @@ def _compute_indicators(prices: np.ndarray) -> Indicators:
     return Indicators(sma_20=sma(20), sma_50=sma(50), rsi_14=rsi_14, volatility=volatility)
 
 
-def _fit_and_forecast(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray, float]:
-    """Fit log-linear trend; return (forecast, band_halfwidth, r2)."""
+def _fit_and_forecast(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
+    """Fit log-linear trend; return (forecast, band_halfwidth)."""
     n = len(prices)
     x = np.arange(n).reshape(-1, 1)
     y = np.log(prices)
 
     model = LinearRegression().fit(x, y)
-    r2 = float(model.score(x, y))
     fitted = model.predict(x)
 
     future_x = np.arange(n, n + horizon).reshape(-1, 1)
@@ -78,7 +87,7 @@ def _fit_and_forecast(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.
     sigma = float(np.diff(y).std())
     steps = np.arange(1, horizon + 1)
     band = forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
-    return forecast, band, r2
+    return forecast, band
 
 
 async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
@@ -92,7 +101,7 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     prices = np.array([h.price for h in history], dtype=float)
     current_price = float(prices[-1])
 
-    forecast, band, r2 = _fit_and_forecast(prices, horizon)
+    forecast, band = _fit_and_forecast(prices, horizon)
 
     last_date = datetime.strptime(history[-1].date, "%Y-%m-%d")
     points = [
@@ -109,18 +118,19 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     pct = (target - current_price) / current_price if current_price else 0.0
     trend = "up" if pct > 0.005 else "down" if pct < -0.005 else "flat"
 
-    # Confidence: good fit and a tight final band → high; poor fit / wide band → low.
-    rel_band = float(band[-1] / target) if target else 1.0
-    confidence = round(max(0.0, min(1.0, max(r2, 0.0) * (1 - min(rel_band, 1.0)))), 3)
+    # Accuracy is looked up from the backtest, never derived from the fit. If no
+    # backtest has been run this is None and the UI says so.
+    with Session(engine) as session:
+        accuracy = accuracy_for(session, MODEL_NAME, horizon)
 
     result = PredictionResult(
         symbol=symbol.upper(),
-        model="linear-trend",
+        model=MODEL_NAME,
         generated_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
         current_price=round(current_price, 2),
         horizon_days=horizon,
         trend=trend,
-        confidence=confidence,
+        accuracy=accuracy,
         forecast=points,
         indicators=_compute_indicators(prices),
         data_source=data_source,
