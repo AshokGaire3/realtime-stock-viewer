@@ -19,6 +19,7 @@ interface; the router only ever sees `PredictionResult`.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Callable
 
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -36,6 +37,18 @@ MODEL_NAME = "linear-trend"
 # loads of the same symbol don't refit.
 TRAIN_DAYS = 120
 PREDICT_TTL = 300
+
+BandFn = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
+
+
+def _static_vol_band(y: np.ndarray, forecast: np.ndarray, horizon: int) -> np.ndarray:
+    """Band from the std of daily log returns — the one-step innovation. Using
+    the residuals around the trend line instead conflates trend misfit with
+    step-to-step uncertainty, giving a "95%" band that measured ~99% coverage.
+    """
+    sigma = float(np.diff(y).std())
+    steps = np.arange(1, horizon + 1)
+    return forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
 
 
 def _compute_indicators(prices: np.ndarray) -> Indicators:
@@ -61,8 +74,15 @@ def _compute_indicators(prices: np.ndarray) -> Indicators:
     return Indicators(sma_20=sma(20), sma_50=sma(50), rsi_14=rsi_14, volatility=volatility)
 
 
-def _fit_and_forecast(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
-    """Fit log-linear trend; return (forecast, band_halfwidth)."""
+def _fit_and_forecast(
+    prices: np.ndarray, horizon: int, band_fn: BandFn = _static_vol_band
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit log-linear trend; return (forecast, band_halfwidth).
+
+    `band_fn` is swappable so the backtest harness can score alternative band
+    strategies (e.g. an EWMA-weighted volatility estimate) against the same
+    trend fit, without duplicating this function.
+    """
     n = len(prices)
     x = np.arange(n).reshape(-1, 1)
     y = np.log(prices)
@@ -81,13 +101,27 @@ def _fit_and_forecast(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.
     log_forecast = log_forecast + (y[-1] - fitted[-1])
     forecast = np.exp(log_forecast)
 
-    # Band from the std of daily log returns — the one-step innovation. Using
-    # the residuals around the trend line instead conflates trend misfit with
-    # step-to-step uncertainty, giving a "95%" band that measured ~99% coverage.
-    sigma = float(np.diff(y).std())
-    steps = np.arange(1, horizon + 1)
-    band = forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
+    band = band_fn(y, forecast, horizon)
     return forecast, band
+
+
+def _next_trading_dates(start: datetime, n: int) -> list[datetime]:
+    """The next `n` weekday dates after `start`, skipping Saturday/Sunday.
+
+    Doesn't know about market holidays — a full trading calendar is more
+    machinery than a display label needs — but it fixes the bulk of the
+    mismatch: `horizon` is a count of trading days (the backtest and its
+    accuracy figures are measured in trading-day steps), so stamping every
+    step at `start + timedelta(days=i)` used to land forecast dates on
+    weekends the market was never open.
+    """
+    dates: list[datetime] = []
+    d = start
+    while len(dates) < n:
+        d += timedelta(days=1)
+        if d.weekday() < 5:  # Mon-Fri
+            dates.append(d)
+    return dates
 
 
 async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
@@ -104,9 +138,10 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     forecast, band = _fit_and_forecast(prices, horizon)
 
     last_date = datetime.strptime(history[-1].date, "%Y-%m-%d")
+    forecast_dates = _next_trading_dates(last_date, horizon)
     points = [
         PredictionPoint(
-            date=(last_date + timedelta(days=i + 1)).strftime("%Y-%m-%d"),
+            date=forecast_dates[i].strftime("%Y-%m-%d"),
             predicted=round(float(forecast[i]), 2),
             lower=round(float(max(forecast[i] - band[i], 0.0)), 2),
             upper=round(float(forecast[i] + band[i]), 2),
@@ -121,7 +156,7 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     # Accuracy is looked up from the backtest, never derived from the fit. If no
     # backtest has been run this is None and the UI says so.
     with Session(engine) as session:
-        accuracy = accuracy_for(session, MODEL_NAME, horizon)
+        accuracy = accuracy_for(session, MODEL_NAME, horizon, symbol=symbol)
 
     result = PredictionResult(
         symbol=symbol.upper(),

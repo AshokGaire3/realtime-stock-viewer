@@ -4,7 +4,6 @@ Single-user for v1 (no auth); a `user` column is included with a default so
 multi-user can be layered on later without a migration headache.
 """
 
-from datetime import date as Date
 from datetime import datetime
 
 from sqlmodel import Field, SQLModel, UniqueConstraint
@@ -51,18 +50,22 @@ class LessonProgress(SQLModel, table=True):
 
 
 class PriceBar(SQLModel, table=True):
-    """One daily bar of real market history — the ground truth we score against.
+    """One bar of real market history — the ground truth we score against.
 
-    Prices are split/dividend-adjusted, so a series is internally consistent
-    over time (an unadjusted split shows up as a -50% day and would wreck both
-    the fit and the scoring).
+    `interval` is "1d" for the daily corpus or a yfinance intraday code
+    ("5m", "1m", ...). Prices are split/dividend-adjusted, so a series is
+    internally consistent over time (an unadjusted split shows up as a -50%
+    bar and would wreck both the fit and the scoring).
     """
 
-    __table_args__ = (UniqueConstraint("symbol", "date", name="uq_pricebar_symbol_date"),)
+    __table_args__ = (
+        UniqueConstraint("symbol", "interval", "ts", name="uq_pricebar_symbol_interval_ts"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     symbol: str = Field(index=True)
-    date: Date = Field(index=True)
+    interval: str = Field(default="1d", index=True)
+    ts: datetime = Field(index=True)
     open: float
     high: float
     low: float
@@ -73,36 +76,39 @@ class PriceBar(SQLModel, table=True):
 
 
 class ForecastRun(SQLModel, table=True):
-    """One model forecasting one symbol as of one date.
+    """One model forecasting one symbol as of one point in time.
 
-    `as_of_date` is the last bar the model was allowed to see. Everything after
+    `as_of_ts` is the last bar the model was allowed to see. Everything after
     it is the future as far as this run is concerned — that invariant is what
-    keeps a backtest honest, and it is asserted in the harness.
+    keeps a backtest honest, and it is enforced in the harness. `horizon` is a
+    step count in units of `interval`, not calendar days.
     """
 
     id: int | None = Field(default=None, primary_key=True)
     model: str = Field(index=True)  # "linear-trend" | "random-walk" | "drift"
     symbol: str = Field(index=True)
-    as_of_date: Date = Field(index=True)
-    horizon_days: int
+    interval: str = Field(default="1d", index=True)
+    as_of_ts: datetime = Field(index=True)
+    horizon: int  # steps ahead, in units of `interval`
     train_days: int  # how many bars the fit actually saw
-    anchor_price: float  # close on as_of_date; baseline for % errors
-    is_backtest: bool = True  # False once we log live /api/predict calls
+    anchor_price: float  # close at as_of_ts; baseline for % errors
+    is_backtest: bool = True  # False once logged from a live /api/predict call
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ForecastPoint(SQLModel, table=True):
-    """A single day-ahead prediction and, once known, what actually happened."""
+    """A single step-ahead prediction and, once known, what actually happened."""
 
     id: int | None = Field(default=None, primary_key=True)
     run_id: int = Field(foreign_key="forecastrun.id", index=True)
-    step: int = Field(index=True)  # trading days ahead: 1..horizon
-    target_date: Date = Field(index=True)
+    step: int = Field(index=True)  # bars ahead: 1..horizon, in units of run.interval
+    # Filled in by scoring, from the bar it actually matched. Null until then —
+    # scoring is by ordinal step, not by a precomputed calendar date, so this
+    # carries no meaning before the point is scored.
+    target_ts: datetime | None = Field(default=None, index=True)
     predicted: float
     lower: float
     upper: float
-    # Filled in by scoring once the target date has real data. Null means
-    # unscored (still in the future, or the corpus has no bar for that day).
     actual: float | None = None
     abs_error: float | None = None
     pct_error: float | None = None  # abs_error / actual, as a fraction

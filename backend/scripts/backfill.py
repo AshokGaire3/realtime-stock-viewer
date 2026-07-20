@@ -21,6 +21,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", default=",".join(POPULAR_STOCKS))
     parser.add_argument("--period", default="10y")
+    parser.add_argument(
+        "--interval", default="1d", help="yfinance interval, e.g. 1d, 5m, 1m (see corpus.py caps)"
+    )
     args = parser.parse_args()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
@@ -30,13 +33,13 @@ def main() -> int:
     with Session(engine) as session:
         for symbol in symbols:
             try:
-                bars = fetch_bars(symbol, args.period)
+                bars = fetch_bars(symbol, args.period, args.interval)
                 added = store_bars(session, bars)
             except CorpusError as exc:
                 print(f"  {symbol:<6} FAILED: {exc}")
                 failures.append(symbol)
                 continue
-            n, first, last = coverage(session, symbol)
+            n, first, last = coverage(session, symbol, args.interval)
             print(f"  {symbol:<6} +{added:<5} stored={n:<6} {first} -> {last}")
 
     if failures:
