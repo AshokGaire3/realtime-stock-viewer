@@ -127,7 +127,7 @@ def _train_bars(interval: str) -> int:
     return DEFAULT_TRAIN_BARS.get(interval, FALLBACK_INTRADAY_TRAIN_BARS)
 
 
-async def _load_from_corpus(symbol: str, interval: str, period: str) -> tuple[np.ndarray, datetime]:
+async def _load_from_corpus(symbol: str, interval: str, period: str) -> list:
     """Real bars only, sourced the same way the backtest and live collector
     are — `corpus.fetch_bars` (yfinance) + `store_bars` — for both daily and
     intraday prediction. Used instead of the Alpha Vantage/Finnhub proxy in
@@ -135,7 +135,11 @@ async def _load_from_corpus(symbol: str, interval: str, period: str) -> tuple[np
     100 points) and has no intraday endpoint at all; yfinance has neither
     limit at the depths this app needs. Raises `CorpusError` if a fresh fetch
     fails and nothing is stored yet; never fabricates data. Runs in a thread
-    since `fetch_bars` is a blocking network call.
+    since `fetch_bars` is a blocking network call. Returns the full stored
+    `PriceBar` series (not just closes) so callers can render a history line
+    from the identical source the forecast itself is fit on — mixing this
+    with `/api/history`'s AV/Finnhub-backed series risks two different
+    "current prices" on the same chart if one proxy is rate-limited.
     """
     def _fetch_and_store() -> list:
         bars = fetch_bars(symbol, period=period, interval=interval)
@@ -143,9 +147,7 @@ async def _load_from_corpus(symbol: str, interval: str, period: str) -> tuple[np
             store_bars(session, bars)
             return load_series(session, symbol, interval)
 
-    series = await asyncio.to_thread(_fetch_and_store)
-    prices = np.array([b.close for b in series], dtype=float)
-    return prices, series[-1].ts
+    return await asyncio.to_thread(_fetch_and_store)
 
 
 async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") -> PredictionResult:
@@ -157,10 +159,16 @@ async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") ->
     # stored yet; the router turns that into a 503. "2y" comfortably covers
     # TRAIN_DAYS (300) for daily; intraday uses whatever's already collected.
     period = "2y" if interval == "1d" else "1d"
-    prices, last_ts = await _load_from_corpus(symbol, interval, period)
-    prices = prices[-_train_bars(interval) :]
+    series = await _load_from_corpus(symbol, interval, period)
+    train_bars = _train_bars(interval)
+    prices = np.array([b.close for b in series], dtype=float)[-train_bars:]
+    last_ts = series[-1].ts
     data_source = "live"
     current_price = float(prices[-1])
+
+    # Same corpus the forecast is fit on, so the chart's history line and the
+    # forecast line never disagree about what "now" is worth.
+    history_bars = series[-min(train_bars, 30) :]
 
     # Which model actually serves this forecast — statistically proven better
     # than random-walk on pooled backtest + live-scored evidence, or
@@ -196,6 +204,10 @@ async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") ->
         horizon_days=horizon,
         trend=trend,
         accuracy=accuracy,
+        history=[
+            ChartData(date=_format_step(b.ts, interval), price=round(b.close, 2), volume=b.volume)
+            for b in history_bars
+        ],
         forecast=points,
         indicators=_compute_indicators(prices),
         data_source=data_source,
@@ -215,11 +227,9 @@ async def get_today_showcase(symbol: str, interval: str = "60m", days: int = 1) 
     if (hit := await cache.get(cache_key)) is not None:
         return hit
 
-    prices, last_ts = await _load_from_corpus(symbol, interval, period="1d")
-    prices = prices[-_train_bars(interval) :]
-
-    with Session(engine) as session:
-        series = load_series(session, symbol, interval)
+    series = await _load_from_corpus(symbol, interval, period="1d")
+    prices = np.array([b.close for b in series], dtype=float)[-_train_bars(interval) :]
+    last_ts = series[-1].ts
     today = series[-1].ts.date()
     todays_bars = [b for b in series if b.ts.date() == today]
 
