@@ -12,8 +12,8 @@ how well" with a number that is not a lie. Two things make it not a lie:
    mean return) over the identical origins and horizons, so "good" has to mean
    "better than assuming nothing".
 
-The production model is imported from `services.predictions`, not reimplemented
-here — we evaluate what actually ships.
+Models under test come from `services.forecasters.MODELS` — the same registry
+`services.predictions` serves from — so we evaluate exactly what can ship.
 """
 
 from __future__ import annotations
@@ -25,46 +25,7 @@ from sqlmodel import Session, select
 
 from app.models import ForecastPoint, ForecastRun, PriceBar
 from app.services.corpus import load_series
-from app.services.predictions import TRAIN_DAYS, _fit_and_forecast
-
-# Models under test. Each takes the training closes and a horizon, and returns
-# (forecast, band_halfwidth) over steps 1..horizon.
-Forecaster = "Callable[[np.ndarray, int], tuple[np.ndarray, np.ndarray]]"
-
-
-def _linear_trend(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
-    """The shipped model (app/services/predictions.py)."""
-    return _fit_and_forecast(prices, horizon)
-
-
-def _random_walk(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
-    """Tomorrow = today. The honest null hypothesis for a price series."""
-    last = float(prices[-1])
-    forecast = np.full(horizon, last)
-    # Band from historical daily vol, widening with sqrt(steps) — same shape of
-    # assumption the production band makes, so coverage is comparable.
-    sigma = float(np.diff(np.log(prices)).std())
-    steps = np.arange(1, horizon + 1)
-    band = forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
-    return forecast, band
-
-
-def _drift(prices: np.ndarray, horizon: int) -> tuple[np.ndarray, np.ndarray]:
-    """Today compounded forward at the mean daily log return."""
-    log_p = np.log(prices)
-    mu = float(np.diff(log_p).mean())
-    sigma = float(np.diff(log_p).std())
-    steps = np.arange(1, horizon + 1)
-    forecast = np.exp(log_p[-1] + mu * steps)
-    band = forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
-    return forecast, band
-
-
-MODELS = {
-    "linear-trend": _linear_trend,
-    "random-walk": _random_walk,
-    "drift": _drift,
-}
+from app.services.forecasters import MODELS, TRAIN_DAYS
 
 
 @dataclass

@@ -27,6 +27,7 @@ from sqlmodel import Session, select
 
 from app.models import ForecastPoint, ForecastRun
 from app.schemas import ModelAccuracy
+from app.services.forecasters import MODELS
 
 _BOOTSTRAP_RESAMPLES = 2000
 _BOOTSTRAP_SEED = 0
@@ -236,6 +237,41 @@ def accuracy_for(
         beats_baseline=me.mape < base.mape,
         n_forecasts=me.n,
     )
+
+
+def select_model(
+    session: Session,
+    horizon: int,
+    candidates: list[str] | None = None,
+    baseline: str = "random-walk",
+    interval: str = "1d",
+) -> str:
+    """Which model should serve this horizon, right now.
+
+    This is the whole self-improving mechanism: it returns a candidate only if
+    `paired_loss_diff` finds it *significantly* better than `baseline` (the
+    bootstrap CI excludes zero) on the identical origins — never just "lowest
+    MAPE today", which one lucky symbol could produce. Pooled across all
+    symbols (`symbol=None` in the underlying queries) rather than per-symbol,
+    because per-symbol cluster counts are too small for the significance test
+    to ever fire; pooled sample sizes are where it has real power. As more
+    backtest or live data accumulates, a rerun of this function can change its
+    answer with no code change and no redeploy — that's the improvement loop.
+    """
+    if candidates is None:
+        candidates = [m for m in MODELS if m != baseline]
+
+    winners = []
+    for model in candidates:
+        diff = paired_loss_diff(session, model, horizon, baseline=baseline, interval=interval)
+        if diff and diff["significant"] and diff["mean_diff"] < 0:
+            winners.append(model)
+
+    if not winners:
+        return baseline
+
+    metrics = {m.model: m for m in metrics_by_horizon(session, steps=[horizon], interval=interval)}
+    return min(winners, key=lambda m: metrics[m].mae)
 
 
 def format_report(metrics: list[HorizonMetrics], baseline: str = "random-walk") -> str:

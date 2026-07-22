@@ -1,54 +1,33 @@
-"""ML price-prediction service (Phase 2 baseline).
+"""ML price-prediction service.
 
-A deliberately simple, explainable scikit-learn baseline: we fit a linear
-regression on *log* prices against a time index (so the forecast compounds
-rather than going negative), anchor it to the last observed close, and project
-forward. The band widens with the square root of the horizon to reflect growing
-uncertainty.
+Serving layer only: caches forecasts, computes display indicators, and shapes
+the response. The forecast models themselves — linear-trend, random-walk,
+drift, ml-momentum — live in `forecasters.py`, shared with the backtest
+harness so what's evaluated is exactly what's served.
 
 **On accuracy:** the reported figures come from the walk-forward backtest
-(`scripts/backtest.py`), never from the model's own fit. Backtested over 10
-years of real prices, this model does not beat a random walk at any horizon —
-it ties at 1 day and loses by ~15% MAE at 30. `ModelAccuracy` carries that fact
-to the client rather than hiding it behind a self-assessed score.
-
-Heavier models (Prophet, LSTM) are slotted for a later phase behind the same
-interface; the router only ever sees `PredictionResult`.
+(`scripts/backtest.py`), never from a model's own fit. `select_model()` picks
+whichever candidate is *statistically* proven better than random-walk at this
+horizon (`evaluation.py`); nothing beating it, it serves random-walk. That
+selection updates automatically as more backtest/live data accumulates — no
+code change needed for the served model to change.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Callable
 
 import numpy as np
-from sklearn.linear_model import LinearRegression
 from sqlmodel import Session
 
 from app.db import engine
 from app.schemas import Indicators, PredictionPoint, PredictionResult
 from app.services import providers
 from app.services.cache import cache
-from app.services.evaluation import accuracy_for
+from app.services.evaluation import accuracy_for, select_model
+from app.services.forecasters import MODELS, TRAIN_DAYS
 
-MODEL_NAME = "linear-trend"
-
-# Train on this many days of history and cache each forecast briefly so repeated
-# loads of the same symbol don't refit.
-TRAIN_DAYS = 120
 PREDICT_TTL = 300
-
-BandFn = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
-
-
-def _static_vol_band(y: np.ndarray, forecast: np.ndarray, horizon: int) -> np.ndarray:
-    """Band from the std of daily log returns — the one-step innovation. Using
-    the residuals around the trend line instead conflates trend misfit with
-    step-to-step uncertainty, giving a "95%" band that measured ~99% coverage.
-    """
-    sigma = float(np.diff(y).std())
-    steps = np.arange(1, horizon + 1)
-    return forecast * (np.exp(1.96 * sigma * np.sqrt(steps)) - 1)
 
 
 def _compute_indicators(prices: np.ndarray) -> Indicators:
@@ -72,37 +51,6 @@ def _compute_indicators(prices: np.ndarray) -> Indicators:
         volatility = round(float(returns.std() * np.sqrt(252)), 4)
 
     return Indicators(sma_20=sma(20), sma_50=sma(50), rsi_14=rsi_14, volatility=volatility)
-
-
-def _fit_and_forecast(
-    prices: np.ndarray, horizon: int, band_fn: BandFn = _static_vol_band
-) -> tuple[np.ndarray, np.ndarray]:
-    """Fit log-linear trend; return (forecast, band_halfwidth).
-
-    `band_fn` is swappable so the backtest harness can score alternative band
-    strategies (e.g. an EWMA-weighted volatility estimate) against the same
-    trend fit, without duplicating this function.
-    """
-    n = len(prices)
-    x = np.arange(n).reshape(-1, 1)
-    y = np.log(prices)
-
-    model = LinearRegression().fit(x, y)
-    fitted = model.predict(x)
-
-    future_x = np.arange(n, n + horizon).reshape(-1, 1)
-    log_forecast = model.predict(future_x)
-
-    # Anchor to the last close. The fitted line does not pass through the final
-    # observation, and the gap is big: measured at ~5.8% on AAPL (worst 32%)
-    # against a typical 1-day move of 1.26%. Unanchored, the forecast opens day
-    # 1 that far from a price we already know, and every later step inherits the
-    # offset — it cost ~333% MAE at 1 day in backtest.
-    log_forecast = log_forecast + (y[-1] - fitted[-1])
-    forecast = np.exp(log_forecast)
-
-    band = band_fn(y, forecast, horizon)
-    return forecast, band
 
 
 def _next_trading_dates(start: datetime, n: int) -> list[datetime]:
@@ -135,7 +83,11 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     prices = np.array([h.price for h in history], dtype=float)
     current_price = float(prices[-1])
 
-    forecast, band = _fit_and_forecast(prices, horizon)
+    # Which model actually serves this forecast — statistically proven better
+    # than random-walk, pooled across symbols, or random-walk itself if not.
+    with Session(engine) as session:
+        model_name = select_model(session, horizon)
+    forecast, band = MODELS[model_name](prices, horizon)
 
     last_date = datetime.strptime(history[-1].date, "%Y-%m-%d")
     forecast_dates = _next_trading_dates(last_date, horizon)
@@ -153,14 +105,15 @@ async def get_prediction(symbol: str, horizon: int = 7) -> PredictionResult:
     pct = (target - current_price) / current_price if current_price else 0.0
     trend = "up" if pct > 0.005 else "down" if pct < -0.005 else "flat"
 
-    # Accuracy is looked up from the backtest, never derived from the fit. If no
-    # backtest has been run this is None and the UI says so.
+    # Accuracy is looked up from the backtest, never derived from the fit, and
+    # pooled across symbols — the same basis `select_model` used to choose
+    # `model_name`, so the two never disagree about whether it's winning.
     with Session(engine) as session:
-        accuracy = accuracy_for(session, MODEL_NAME, horizon, symbol=symbol)
+        accuracy = accuracy_for(session, model_name, horizon)
 
     result = PredictionResult(
         symbol=symbol.upper(),
-        model=MODEL_NAME,
+        model=model_name,
         generated_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
         current_price=round(current_price, 2),
         horizon_days=horizon,
