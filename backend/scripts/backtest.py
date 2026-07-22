@@ -15,6 +15,7 @@ from sqlmodel import Session
 from app.db import engine, init_db
 from app.services.backtest import clear_backtests, run_backtest
 from app.services.evaluation import format_report, metrics_by_horizon
+from app.services.forecasters import DEFAULT_TRAIN_BARS, FALLBACK_INTRADAY_TRAIN_BARS
 from app.services.providers import POPULAR_STOCKS
 
 REPORT_STEPS = [1, 5, 10, 20, 30]
@@ -26,11 +27,20 @@ def main() -> int:
     parser.add_argument("--horizon", type=int, default=30)
     parser.add_argument("--stride", type=int, default=5, help="bars between origins")
     parser.add_argument(
-        "--interval", default="1d", help="corpus interval to backtest against, e.g. 1d, 5m"
+        "--interval", default="1d", help="corpus interval to backtest against, e.g. 1d, 60m"
+    )
+    parser.add_argument(
+        "--train-bars",
+        type=int,
+        default=None,
+        help="training window in bars (default: interval-dependent, same as scripts.collect)",
     )
     args = parser.parse_args()
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    train_bars = args.train_bars or DEFAULT_TRAIN_BARS.get(
+        args.interval, FALLBACK_INTRADAY_TRAIN_BARS
+    )
     init_db()
 
     with Session(engine) as session:
@@ -39,7 +49,12 @@ def main() -> int:
 
         started = time.time()
         counts = run_backtest(
-            session, symbols, horizon=args.horizon, stride=args.stride, interval=args.interval
+            session,
+            symbols,
+            horizon=args.horizon,
+            train_days=train_bars,
+            stride=args.stride,
+            interval=args.interval,
         )
         elapsed = time.time() - started
         total = sum(counts.values())

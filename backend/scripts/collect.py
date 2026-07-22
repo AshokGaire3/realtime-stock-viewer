@@ -35,13 +35,8 @@ from app.db import engine, init_db
 from app.models import ForecastPoint, ForecastRun
 from app.services.backtest import score_pending
 from app.services.corpus import CorpusError, fetch_bars, load_series, store_bars
-from app.services.forecasters import MODELS, TRAIN_DAYS
+from app.services.forecasters import DEFAULT_TRAIN_BARS, FALLBACK_INTRADAY_TRAIN_BARS, MODELS
 from app.services.providers import POPULAR_STOCKS
-
-# 5 trading days' worth of 5-min bars (78/day). Daily reuses the shipped
-# model's own TRAIN_DAYS so the two paths stay comparable.
-DEFAULT_TRAIN_BARS = {"1d": TRAIN_DAYS}
-_FALLBACK_INTRADAY_TRAIN_BARS = 390
 
 
 def _tick(session: Session, symbol: str, interval: str, horizon: int, train_bars: int) -> None:
@@ -115,7 +110,7 @@ def main() -> int:
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
     train_bars = args.train_bars or DEFAULT_TRAIN_BARS.get(
-        args.interval, _FALLBACK_INTRADAY_TRAIN_BARS
+        args.interval, FALLBACK_INTRADAY_TRAIN_BARS
     )
     init_db()
 

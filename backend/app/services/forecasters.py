@@ -21,6 +21,14 @@ from sklearn.linear_model import LinearRegression
 # endpoint fit on comparable windows.
 TRAIN_DAYS = 120
 
+# Default training-window bar counts by interval, shared by the live collector
+# and the backtest CLI so both fit on comparable windows. Daily reuses the
+# shipped model's own TRAIN_DAYS; anything intraday falls back to ~5 trading
+# days' worth of 60-minute bars (78 bars/day at 5m, ~7 at 60m — 390 covers a
+# 5m corpus's yfinance lookback cap and is a reasonable default for 60m too).
+DEFAULT_TRAIN_BARS = {"1d": TRAIN_DAYS}
+FALLBACK_INTRADAY_TRAIN_BARS = 390
+
 BandFn = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
 Forecaster = Callable[[np.ndarray, int], "tuple[np.ndarray, np.ndarray]"]
 
