@@ -81,7 +81,11 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
     };
   }, [symbol, days]);
 
-  const tickFormat = days > 1 ? 'MMM dd HH:mm' : 'HH:mm';
+  // Based on what the rows actually span, not the `days` selection: when
+  // today's session is already over, even "1D" rolls into tomorrow's full
+  // session, and a bare "09:30" tick would be ambiguous about which day.
+  const spansMultipleDays = new Set(rows.map((r) => r.time.slice(0, 10))).size > 1;
+  const tickFormat = spansMultipleDays ? 'MMM dd HH:mm' : 'HH:mm';
 
   const daysSelector = (
     <div className="flex gap-2">
