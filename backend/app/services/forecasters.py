@@ -18,15 +18,21 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 
 # Train on this many days of history; shared so the backtest and the live
-# endpoint fit on comparable windows.
-TRAIN_DAYS = 120
+# endpoint fit on comparable windows. 300 comfortably covers a ~252-trading-day
+# (one year) lookback feature for ml-momentum with margin left for training
+# examples; bumped from 120, which could never see a year back regardless of
+# how much real history existed upstream.
+TRAIN_DAYS = 300
 
-# Default training-window bar counts by interval, shared by the live collector
-# and the backtest CLI so both fit on comparable windows. Daily reuses the
-# shipped model's own TRAIN_DAYS; anything intraday falls back to ~5 trading
-# days' worth of 60-minute bars (78 bars/day at 5m, ~7 at 60m — 390 covers a
-# 5m corpus's yfinance lookback cap and is a reasonable default for 60m too).
-DEFAULT_TRAIN_BARS = {"1d": TRAIN_DAYS}
+# Default training-window bar counts by interval, shared by the live
+# serving path, the live collector, and the backtest CLI so all three fit on
+# the identical window — otherwise the accuracy the backtest measures
+# describes a different fit than the one actually served. Daily reuses the
+# shipped model's own TRAIN_DAYS. 60m is trimmed to 150 (~21 trading days)
+# rather than the full 60-day/~420-bar intraday corpus, leaving enough
+# origins in that corpus for a walk-forward backtest at a week-long (49-step)
+# horizon. Anything else intraday falls back to ~5 trading days of 5-min bars.
+DEFAULT_TRAIN_BARS = {"1d": TRAIN_DAYS, "60m": 150}
 FALLBACK_INTRADAY_TRAIN_BARS = 390
 
 BandFn = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
@@ -109,14 +115,27 @@ _MIN_TRAIN_EXAMPLES = 10
 
 
 def _momentum_features(prices: np.ndarray) -> np.ndarray:
-    """7 features describing the tail of `prices`: recent returns, RSI-14,
-    annualized volatility, and the SMA20/SMA50 ratio. `prices` is truncated to
-    "history as of this point" by the caller — this only ever looks backward.
+    """9 features describing the tail of `prices` across short, medium, and
+    long lookbacks: returns at ~day/week/month/quarter/year bar-counts,
+    RSI-14, volatility at two horizons, and the SMA20/SMA50 ratio. `prices`
+    is truncated to "history as of this point" by the caller — this only
+    ever looks backward.
+
+    "Month"/"quarter"/"year" are bar counts (21/60/252), not literal
+    calendar spans — on the daily model they line up with trading-day
+    convention; on the hourly model (60-day yfinance intraday cap) 252 bars
+    is ~36 trading days, not a year. `log_ret`/vol already degrade to `0.0`
+    when there isn't enough history yet, so no extra guard is needed here —
+    early training examples in a window just see a flat 0.0 for whichever
+    lookback isn't available yet.
     """
     log_p = np.log(prices)
 
     def log_ret(n: int) -> float:
         return float(log_p[-1] - log_p[-1 - n]) if len(log_p) > n else 0.0
+
+    def vol(n: int) -> float:
+        return float(np.diff(log_p[-n - 1 :]).std() * np.sqrt(252)) if len(prices) > n else 0.0
 
     deltas = np.diff(prices[-15:])
     gains = deltas[deltas > 0].sum()
@@ -127,12 +146,21 @@ def _momentum_features(prices: np.ndarray) -> np.ndarray:
         rs = (gains / 14) / (losses / 14)
         rsi_14 = 100 - 100 / (1 + rs)
 
-    vol_20 = float(np.diff(log_p[-21:]).std() * np.sqrt(252)) if len(prices) >= 21 else 0.0
     sma_20 = float(prices[-20:].mean())
     sma_50 = float(prices[-50:].mean())
 
     return np.array(
-        [log_ret(1), log_ret(5), log_ret(10), log_ret(20), rsi_14, vol_20, sma_20 / sma_50],
+        [
+            log_ret(1),  # ~day
+            log_ret(5),  # ~week
+            log_ret(21),  # ~month
+            log_ret(60),  # ~quarter
+            log_ret(252),  # ~year (bar-count; see docstring)
+            rsi_14,
+            vol(20),
+            vol(60),
+            sma_20 / sma_50,
+        ],
         dtype=float,
     )
 
