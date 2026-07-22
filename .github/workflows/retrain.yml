@@ -1,0 +1,42 @@
+name: Retrain forecast models
+
+# The self-improving mechanism: re-backfill real prices and re-run the
+# walk-forward backtest against the production database on a schedule. No
+# deploy step follows — /api/predict reads accuracy from the DB on every
+# request (services/evaluation.py::select_model), so a fresh backtest changes
+# which model is served immediately, with no redeploy and no code change.
+#
+# Requires a repo secret PROD_DATABASE_URL: Render's **External** Postgres
+# connection string (Internal only resolves inside Render's network). Add it
+# under Settings -> Secrets and variables -> Actions.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC
+  workflow_dispatch: {} # allow a manual run from the Actions tab
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Backfill real prices
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: python -m scripts.backfill --period 10y
+
+      - name: Walk-forward backtest
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: python -m scripts.backtest --horizon 30 --stride 5
