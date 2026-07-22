@@ -257,6 +257,21 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
         </div>
       )}
 
+      {prediction.accuracy && prediction.accuracy.beats_baseline && (
+        <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-4">
+          <p className="text-emerald-200 text-sm font-medium">
+            This model measurably beats assuming the price stays flat.
+          </p>
+          <p className="text-emerald-200/70 text-xs mt-1">
+            Over {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts, it was off
+            by {prediction.accuracy.mape.toFixed(1)}% on average at {prediction.accuracy.horizon_days}{' '}
+            days, versus {prediction.accuracy.baseline_mape.toFixed(1)}% for simply predicting no
+            change — the model was auto-selected because that edge is statistically significant, not
+            just a lucky backtest.
+          </p>
+        </div>
+      )}
+
       <p className="text-xs text-gray-500">
         {prediction.data_source === 'fallback' &&
           'This forecast was fitted on simulated demo prices, so the numbers above describe mock data, not the market. '}
