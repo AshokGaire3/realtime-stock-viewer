@@ -3,6 +3,7 @@ import {
   HistorySeries,
   PredictionResult,
   StockData,
+  TodayShowcase,
 } from '../types/financial';
 
 // All market data comes from our own backend, which holds the upstream API keys
@@ -38,6 +39,7 @@ export const financialApi = {
   getCrypto: () => getJson<CryptoData[]>('/crypto'),
   getHistory: (symbol: string, days = 30) => getJson<HistorySeries>('/history', { symbol, days }),
   searchStocks: (q: string) => getJson<StockData[]>('/search', { q }),
-  getPrediction: (symbol: string, horizon = 7) =>
-    getJson<PredictionResult>('/predict', { symbol, horizon }),
+  getPrediction: (symbol: string, horizon = 7, interval: '1d' | '60m' = '1d') =>
+    getJson<PredictionResult>('/predict', { symbol, horizon, interval }),
+  getTodayShowcase: (symbol: string) => getJson<TodayShowcase>('/predict/today', { symbol }),
 };

@@ -15,6 +15,7 @@ import { Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { PredictionResult } from '../types/financial';
 import { financialApi } from '../services/financialApi';
 import { DemoBadge } from './DemoBadge';
+import { TodayShowcase } from './TodayShowcase';
 
 // Actual vs forecast is a categorical pair, validated for CVD separation against
 // the dark surface (protan ΔE 14.7). The forecast is also dashed, so the two
@@ -48,6 +49,7 @@ const Stat = ({ label, value }: { label: string; value: string }) => (
 );
 
 export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
+  const [view, setView] = useState<'daily' | 'today'>('daily');
   const [horizon, setHorizon] = useState(7);
   const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -94,12 +96,40 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
     load();
   }, [symbol, horizon]);
 
+  const viewToggle = (
+    <div className="flex gap-2">
+      {(['daily', 'today'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => setView(v)}
+          className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+            view === v ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          {v === 'daily' ? 'Daily' : 'Today (Hourly)'}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (view === 'today') {
+    return (
+      <div className="space-y-6">
+        {viewToggle}
+        <TodayShowcase symbol={symbol} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-gray-400">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span>Running forecast for {symbol}...</span>
+      <div className="space-y-6">
+        {viewToggle}
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span>Running forecast for {symbol}...</span>
+          </div>
         </div>
       </div>
     );
@@ -107,10 +137,13 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
 
   if (error || !prediction) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 font-medium">{error}</p>
-          <p className="text-gray-500 text-sm mt-1">No forecast available for {symbol}.</p>
+      <div className="space-y-6">
+        {viewToggle}
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-red-400 font-medium">{error}</p>
+            <p className="text-gray-500 text-sm mt-1">No forecast available for {symbol}.</p>
+          </div>
         </div>
       </div>
     );
@@ -121,6 +154,7 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
 
   return (
     <div className="space-y-6">
+      {viewToggle}
       <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">

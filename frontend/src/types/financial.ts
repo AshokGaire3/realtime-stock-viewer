@@ -87,6 +87,32 @@ export interface PredictionResult {
   disclaimer: string;
 }
 
+/** One hourly forecast, labeled against reality once its target bar arrived. */
+export interface ScoredPrediction {
+  as_of: string;
+  /** Null until scored. */
+  target: string | null;
+  model: string;
+  predicted: number;
+  actual: number | null;
+  abs_error: number | null;
+  direction_hit: boolean | null;
+}
+
+/** One trading day at hourly resolution — bars so far, the forecast for the
+ * remaining hours, and every prediction already labeled against reality today. */
+export interface TodayShowcase {
+  symbol: string;
+  interval: string;
+  trading_date: string;
+  model: string;
+  bars: ChartData[];
+  forecast: PredictionPoint[];
+  scored: ScoredPrediction[];
+  data_source: Source;
+  disclaimer: string;
+}
+
 export interface Portfolio {
   symbol: string;
   shares: number;
