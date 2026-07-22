@@ -23,8 +23,6 @@ import { TodayShowcase } from './TodayShowcase';
 const ACTUAL = '#3B82F6';
 const FORECAST = '#EC4899';
 
-const HISTORY_DAYS = 30;
-
 interface Row {
   date: string;
   actual?: number;
@@ -61,12 +59,11 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
       setLoading(true);
       setError('');
       try {
-        const [history, result] = await Promise.all([
-          financialApi.getHistory(symbol, HISTORY_DAYS),
-          financialApi.getPrediction(symbol, horizon),
-        ]);
+        const result = await financialApi.getPrediction(symbol, horizon);
 
-        const actualRows: Row[] = history.points.map((point) => ({ date: point.date, actual: point.price }));
+        // Same response as the forecast — the history line and forecast line
+        // can never disagree about what "now" is worth.
+        const actualRows: Row[] = result.history.map((point) => ({ date: point.date, actual: point.price }));
         // Join the two lines at the seam: the last real price is also the
         // forecast's origin, with a zero-width band.
         const last = actualRows[actualRows.length - 1];
@@ -160,7 +157,7 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-white">{symbol} Forecast</h3>
             {prediction.data_source === 'fallback' && (
-              <DemoBadge title="Forecast fitted on simulated demo prices — not a market signal" />
+              <DemoBadge title="Simulated demo prices, not a market signal" />
             )}
             <span className="text-xs text-gray-500">model: {prediction.model}</span>
           </div>
@@ -279,14 +276,11 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
 
       {prediction.accuracy && !prediction.accuracy.beats_baseline && (
         <div className="bg-amber-950/40 border border-amber-800/60 rounded-xl p-4">
-          <p className="text-amber-200 text-sm font-medium">
-            This model does not beat assuming the price stays flat.
-          </p>
+          <p className="text-amber-200 text-sm font-medium">Does not beat assuming the price stays flat.</p>
           <p className="text-amber-200/70 text-xs mt-1">
-            Over {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts, it was off
-            by {prediction.accuracy.mape.toFixed(1)}% on average at {prediction.accuracy.horizon_days}{' '}
-            days, versus {prediction.accuracy.baseline_mape.toFixed(1)}% for simply predicting no
-            change. Treat the line above as an illustration of trend, not a signal to act on.
+            {prediction.accuracy.mape.toFixed(1)}% avg error at {prediction.accuracy.horizon_days}d vs.{' '}
+            {prediction.accuracy.baseline_mape.toFixed(1)}% for "no change," over{' '}
+            {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts.
           </p>
         </div>
       )}
@@ -294,23 +288,19 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
       {prediction.accuracy && prediction.accuracy.beats_baseline && (
         <div className="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-4">
           <p className="text-emerald-200 text-sm font-medium">
-            This model measurably beats assuming the price stays flat.
+            Measurably beats assuming the price stays flat (statistically significant, auto-selected).
           </p>
           <p className="text-emerald-200/70 text-xs mt-1">
-            Over {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts, it was off
-            by {prediction.accuracy.mape.toFixed(1)}% on average at {prediction.accuracy.horizon_days}{' '}
-            days, versus {prediction.accuracy.baseline_mape.toFixed(1)}% for simply predicting no
-            change — the model was auto-selected because that edge is statistically significant, not
-            just a lucky backtest.
+            {prediction.accuracy.mape.toFixed(1)}% avg error at {prediction.accuracy.horizon_days}d vs.{' '}
+            {prediction.accuracy.baseline_mape.toFixed(1)}% for "no change," over{' '}
+            {prediction.accuracy.n_forecasts.toLocaleString()} backtested forecasts.
           </p>
         </div>
       )}
 
       <p className="text-xs text-gray-500">
-        {prediction.data_source === 'fallback' &&
-          'This forecast was fitted on simulated demo prices, so the numbers above describe mock data, not the market. '}
-        {!prediction.accuracy &&
-          'Accuracy has not been measured for this model — run the backtest to find out how wrong it typically is. '}
+        {prediction.data_source === 'fallback' && 'Simulated demo prices, not the market. '}
+        {!prediction.accuracy && 'Accuracy not yet measured for this model. '}
         {prediction.disclaimer}
       </p>
     </div>

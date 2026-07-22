@@ -41,5 +41,6 @@ export const financialApi = {
   searchStocks: (q: string) => getJson<StockData[]>('/search', { q }),
   getPrediction: (symbol: string, horizon = 7, interval: '1d' | '60m' = '1d') =>
     getJson<PredictionResult>('/predict', { symbol, horizon, interval }),
-  getTodayShowcase: (symbol: string) => getJson<TodayShowcase>('/predict/today', { symbol }),
+  getTodayShowcase: (symbol: string, days = 1) =>
+    getJson<TodayShowcase>('/predict/today', { symbol, days }),
 };

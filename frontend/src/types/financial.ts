@@ -80,6 +80,8 @@ export interface PredictionResult {
   trend: 'up' | 'down' | 'flat';
   /** Null until a backtest has been run. */
   accuracy: ModelAccuracy | null;
+  /** Recent actual closes, from the same source the forecast is fit on. */
+  history: ChartData[];
   forecast: PredictionPoint[];
   indicators: Indicators;
   /** Whether the forecast was fitted on real prices. */
