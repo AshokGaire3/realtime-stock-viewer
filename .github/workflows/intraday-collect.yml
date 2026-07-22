@@ -1,0 +1,41 @@
+name: Collect hourly forecasts
+
+# Runs the live intraday collector on a schedule during market hours: fetches
+# any new 60-minute bars, logs a forecast from every candidate model
+# (services/forecasters.MODELS), and labels every earlier forecast whose
+# target bar now exists. This is what feeds live evidence into select_model()
+# alongside the backtest -- it's the actual "improves from labeled
+# predictions" loop, running continuously instead of manually.
+#
+# collect.py only acts on genuinely new bars and is fully idempotent, so
+# polling more often than a new bar can appear is harmless -- it just costs
+# a few Action minutes. Requires the same PROD_DATABASE_URL repo secret as
+# retrain.yml (Render's External Postgres URL).
+
+on:
+  schedule:
+    # Every 20 min, 13:00-21:00 UTC, Mon-Fri -- covers 9:30am-4pm ET with
+    # slop for DST (UTC offset shifts between EST/EDT twice a year).
+    - cron: "*/20 13-21 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect and score
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: python -m scripts.collect --interval 60m --horizon 7 --once
