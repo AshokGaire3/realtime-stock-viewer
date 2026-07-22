@@ -91,6 +91,41 @@ class ModelAccuracy(BaseModel):
     n_forecasts: int  # sample size behind these figures
 
 
+class ScoredPrediction(BaseModel):
+    """One hourly forecast, labeled against what actually happened once its
+    target bar arrived — the visible "label ledger" behind model selection.
+    `actual`/`abs_error`/`direction_hit` are None until that bar exists yet.
+    """
+
+    as_of: str  # timestamp the prediction was made from
+    target: str | None = None  # timestamp being predicted; None until scored
+    model: str
+    predicted: float
+    actual: float | None = None
+    abs_error: float | None = None
+    direction_hit: bool | None = None
+
+
+class TodayShowcase(BaseModel):
+    """One trading day at hourly resolution: bars collected so far, the
+    forecast for the remaining hours, and every prediction already scored
+    against reality today.
+    """
+
+    symbol: str
+    interval: str
+    trading_date: str  # "YYYY-MM-DD"
+    model: str  # model currently serving the forward forecast
+    bars: list[ChartData]  # today's actual hourly closes so far
+    forecast: list[PredictionPoint]  # forward forecast for the remaining hours
+    scored: list[ScoredPrediction]  # today's labeled predictions, oldest first
+    data_source: Source
+    disclaimer: str = (
+        "Forecasts are statistical extrapolations for educational use only, "
+        "not financial advice."
+    )
+
+
 class PredictionResult(BaseModel):
     symbol: str
     model: str  # which model produced the forecast, e.g. "linear-trend"

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.db import init_db
 from app.routers import market, predictions
+from app.services.corpus import CorpusError
 from app.services.providers import UnknownSymbolError
 
 settings = get_settings()
@@ -51,6 +52,14 @@ app.include_router(predictions.router)
 async def unknown_symbol_handler(request: Request, exc: UnknownSymbolError) -> JSONResponse:
     """One place to turn an unrecognised ticker into a 404 for every route."""
     return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(CorpusError)
+async def corpus_error_handler(request: Request, exc: CorpusError) -> JSONResponse:
+    """Intraday history couldn't be fetched or isn't stored yet — a clear 503,
+    never a silent fallback to synthetic data (see corpus.py's no-fallback rule).
+    """
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.get("/api/health", tags=["meta"])
