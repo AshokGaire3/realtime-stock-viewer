@@ -2,10 +2,16 @@
 
     .venv/bin/python -m scripts.collect [--symbols ...] [--interval 5m] [--horizon 12] [--every 300] [--once]
 
-Each tick, per symbol: fetch the latest bars and store any new ones, fit the
-shipped model and log a forecast if a new bar arrived, then score every
-earlier live forecast whose target bars now exist (`score_pending`, shared
-with the backtest harness — see `services/backtest.py`).
+Each tick, per symbol: fetch the latest bars and store any new ones, fit
+*every* candidate model (`services.forecasters.MODELS`) and log a forecast for
+each if a new bar arrived, then score every earlier live forecast whose target
+bars now exist (`score_pending`, shared with the backtest harness — see
+`services/backtest.py`).
+
+Logging every candidate, not just whichever one `select_model` currently
+serves, is what lets the selection change over time: a model that starts
+losing after being picked needs live evidence to fall from, and a model that
+was passed over needs live evidence to earn a future win.
 
 Runs indefinitely by default; `--once` runs a single tick and exits, for cron
 or manual invocation. Off-hours ticks simply find no new bars and log nothing,
@@ -29,7 +35,7 @@ from app.db import engine, init_db
 from app.models import ForecastPoint, ForecastRun
 from app.services.backtest import score_pending
 from app.services.corpus import CorpusError, fetch_bars, load_series, store_bars
-from app.services.predictions import MODEL_NAME, TRAIN_DAYS, _fit_and_forecast
+from app.services.forecasters import MODELS, TRAIN_DAYS
 from app.services.providers import POPULAR_STOCKS
 
 # 5 trading days' worth of 5-min bars (78/day). Daily reuses the shipped
@@ -50,31 +56,38 @@ def _tick(session: Session, symbol: str, interval: str, horizon: int, train_bars
 
     if added and len(series) >= train_bars + 1:
         train = np.array([b.close for b in series[-train_bars:]], dtype=float)
-        forecast, band = _fit_and_forecast(train, horizon)
-        run = ForecastRun(
-            model=MODEL_NAME,
-            symbol=symbol.upper(),
-            interval=interval,
-            as_of_ts=series[-1].ts,
-            horizon=horizon,
-            train_days=len(train),
-            anchor_price=float(train[-1]),
-            is_backtest=False,
-        )
-        session.add(run)
-        session.flush()  # assign run.id without a full commit
-        session.add_all(
-            ForecastPoint(
-                run_id=run.id,
-                step=step,
-                predicted=round(float(forecast[step - 1]), 4),
-                lower=round(max(float(forecast[step - 1] - band[step - 1]), 0.0), 4),
-                upper=round(float(forecast[step - 1] + band[step - 1]), 4),
+        logged = []
+        for name, forecaster in MODELS.items():
+            try:
+                forecast, band = forecaster(train, horizon)
+            except ValueError as exc:
+                print(f"  {symbol:<6} {name} skipped this tick: {exc}")
+                continue
+            run = ForecastRun(
+                model=name,
+                symbol=symbol.upper(),
+                interval=interval,
+                as_of_ts=series[-1].ts,
+                horizon=horizon,
+                train_days=len(train),
+                anchor_price=float(train[-1]),
+                is_backtest=False,
             )
-            for step in range(1, horizon + 1)
-        )
+            session.add(run)
+            session.flush()  # assign run.id without a full commit
+            session.add_all(
+                ForecastPoint(
+                    run_id=run.id,
+                    step=step,
+                    predicted=round(float(forecast[step - 1]), 4),
+                    lower=round(max(float(forecast[step - 1] - band[step - 1]), 0.0), 4),
+                    upper=round(float(forecast[step - 1] + band[step - 1]), 4),
+                )
+                for step in range(1, horizon + 1)
+            )
+            logged.append(name)
         session.commit()
-        print(f"  {symbol:<6} +{added} bar(s), logged forecast as of {series[-1].ts}")
+        print(f"  {symbol:<6} +{added} bar(s), logged {logged} as of {series[-1].ts}")
     elif added:
         print(
             f"  {symbol:<6} +{added} bar(s), not enough history yet "
