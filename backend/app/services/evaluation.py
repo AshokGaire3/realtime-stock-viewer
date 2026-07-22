@@ -216,14 +216,21 @@ def accuracy_for(
     baseline: str = "random-walk",
     symbol: str | None = None,
     interval: str = "1d",
+    is_backtest: bool | None = True,
 ) -> ModelAccuracy | None:
     """Measured accuracy for one model at one horizon, for the live endpoint.
 
     Returns None when no backtest has been run — the endpoint then reports no
     accuracy at all, which is the honest answer. Inventing a number here is the
     exact failure we removed.
+
+    `is_backtest=None` pools backtest and live-scored evidence — pass the same
+    value used by `select_model` so the reported accuracy always describes the
+    evidence that actually picked the model, not a different slice of it.
     """
-    metrics = metrics_by_horizon(session, steps=[horizon], symbol=symbol, interval=interval)
+    metrics = metrics_by_horizon(
+        session, steps=[horizon], symbol=symbol, interval=interval, is_backtest=is_backtest
+    )
     by_model = {m.model: m for m in metrics}
     me, base = by_model.get(model), by_model.get(baseline)
     if me is None or base is None:
@@ -245,6 +252,7 @@ def select_model(
     candidates: list[str] | None = None,
     baseline: str = "random-walk",
     interval: str = "1d",
+    is_backtest: bool | None = None,
 ) -> str:
     """Which model should serve this horizon, right now.
 
@@ -254,24 +262,74 @@ def select_model(
     MAPE today", which one lucky symbol could produce. Pooled across all
     symbols (`symbol=None` in the underlying queries) rather than per-symbol,
     because per-symbol cluster counts are too small for the significance test
-    to ever fire; pooled sample sizes are where it has real power. As more
-    backtest or live data accumulates, a rerun of this function can change its
-    answer with no code change and no redeploy — that's the improvement loop.
+    to ever fire; pooled sample sizes are where it has real power.
+
+    `is_backtest=None` (the default) pools the walk-forward backtest with
+    every live forecast `scripts/collect.py` has since labeled against
+    reality — both cluster by `(symbol, as_of day)` the same way, so pooling
+    adds evidence and recency without weakening the statistics. This is what
+    makes the answer actually change as live predictions get scored correct
+    or incorrect, with no code change and no redeploy — the improvement loop.
     """
     if candidates is None:
         candidates = [m for m in MODELS if m != baseline]
 
     winners = []
     for model in candidates:
-        diff = paired_loss_diff(session, model, horizon, baseline=baseline, interval=interval)
+        diff = paired_loss_diff(
+            session, model, horizon, baseline=baseline, interval=interval, is_backtest=is_backtest
+        )
         if diff and diff["significant"] and diff["mean_diff"] < 0:
             winners.append(model)
 
     if not winners:
         return baseline
 
-    metrics = {m.model: m for m in metrics_by_horizon(session, steps=[horizon], interval=interval)}
+    metrics = {
+        m.model: m
+        for m in metrics_by_horizon(session, steps=[horizon], interval=interval, is_backtest=is_backtest)
+    }
     return min(winners, key=lambda m: metrics[m].mae)
+
+
+def todays_scored_points(
+    session: Session, symbol: str, interval: str = "60m", model: str | None = None
+) -> list[dict]:
+    """The label ledger for the intraday showcase: every live (`is_backtest`
+    False) forecast point logged for `symbol` on the most recent trading day
+    present in the corpus, oldest first. Not filtered by calendar "today" so
+    it still shows something sensible when queried outside market hours.
+    """
+    q = (
+        select(ForecastRun, ForecastPoint)
+        .join(ForecastPoint, ForecastPoint.run_id == ForecastRun.id)
+        .where(ForecastRun.symbol == symbol.upper())
+        .where(ForecastRun.interval == interval)
+        .where(ForecastRun.is_backtest == False)  # noqa: E712
+    )
+    if model:
+        q = q.where(ForecastRun.model == model)
+    rows = session.exec(q).all()
+    if not rows:
+        return []
+
+    latest_day = max(run.as_of_ts.date() for run, _ in rows)
+    day_rows = sorted(
+        (rp for rp in rows if rp[0].as_of_ts.date() == latest_day),
+        key=lambda rp: (rp[0].as_of_ts, rp[1].step),
+    )
+    return [
+        {
+            "as_of": run.as_of_ts.isoformat(timespec="minutes"),
+            "target": point.target_ts.isoformat(timespec="minutes") if point.target_ts else None,
+            "model": run.model,
+            "predicted": point.predicted,
+            "actual": point.actual,
+            "abs_error": point.abs_error,
+            "direction_hit": point.direction_hit,
+        }
+        for run, point in day_rows
+    ]
 
 
 def format_report(metrics: list[HorizonMetrics], baseline: str = "random-walk") -> str:
