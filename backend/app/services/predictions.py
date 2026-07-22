@@ -23,19 +23,20 @@ from sqlmodel import Session
 
 from app.db import engine
 from app.schemas import ChartData, Indicators, PredictionPoint, PredictionResult, ScoredPrediction, TodayShowcase
-from app.services import providers
 from app.services.cache import cache
 from app.services.corpus import fetch_bars, load_series, store_bars
 from app.services.evaluation import accuracy_for, select_model, todays_scored_points
-from app.services.forecasters import MODELS, TRAIN_DAYS
+from app.services.forecasters import DEFAULT_TRAIN_BARS, FALLBACK_INTRADAY_TRAIN_BARS, MODELS
 
 PREDICT_TTL = 300
 TODAY_TTL = 300
 
 # yfinance strips timezone info but leaves the exchange-local wall-clock time
-# in place, so bar timestamps read as naive US/Eastern. Regular-session close.
-_MARKET_CLOSE_HOUR = 16
-_MAX_TODAY_HORIZON = 8
+# in place, so bar timestamps read as naive US/Eastern.
+_MARKET_OPEN = (9, 30)
+_MARKET_CLOSE = (15, 30)  # last hourly bar of the trading day
+_BARS_PER_DAY = 7  # 09:30, 10:30, ..., 15:30
+_MAX_WINDOW_DAYS = 7
 
 
 def _compute_indicators(prices: np.ndarray) -> Indicators:
@@ -80,24 +81,36 @@ def _next_trading_dates(start: datetime, n: int) -> list[datetime]:
     return dates
 
 
-def _next_steps(start: datetime, n: int, interval: str) -> list[datetime]:
-    """Timestamps for the next `n` forecast steps after `start`.
+def _next_market_hour(d: datetime) -> datetime:
+    """The next hourly bar timestamp after `d`, one step of a trading-hours
+    calendar: advances an hour within the session, then rolls to the next
+    weekday's 09:30 open once a day's 15:30 bar is passed. Only correct for
+    hourly (`60m`) bars, matching the 7-bars/day alignment the corpus already
+    stores (09:30, 10:30, ..., 15:30).
+    """
+    d = d + timedelta(hours=1)
+    close_today = d.replace(hour=_MARKET_CLOSE[0], minute=_MARKET_CLOSE[1], second=0, microsecond=0)
+    if d > close_today or d.weekday() >= 5:
+        d = d.replace(hour=_MARKET_OPEN[0], minute=_MARKET_OPEN[1], second=0, microsecond=0)
+        d += timedelta(days=1)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+    return d
 
-    Daily steps reuse `_next_trading_dates`. Intraday steps are simple fixed
-    increments (e.g. +60m) that skip weekends only — a display label, not a
-    full market-hours calendar. `/api/predict/today` bounds the horizon to
-    the remaining trading day itself, so the imprecision here never actually
-    surfaces a timestamp outside market hours in the showcase view.
+
+def _next_steps(start: datetime, n: int, interval: str) -> list[datetime]:
+    """Timestamps for the next `n` forecast steps after `start`. Daily steps
+    reuse `_next_trading_dates`; hourly steps use the trading-hours calendar
+    above so a multi-day window never lands a forecast at 11pm or on a
+    weekend.
     """
     if interval == "1d":
         return _next_trading_dates(start, n)
-    step = timedelta(minutes=int(interval[:-1])) if interval.endswith("m") else timedelta(days=1)
     dates: list[datetime] = []
     d = start
     while len(dates) < n:
-        d += step
-        if d.weekday() < 5:
-            dates.append(d)
+        d = _next_market_hour(d)
+        dates.append(d)
     return dates
 
 
@@ -105,22 +118,36 @@ def _format_step(d: datetime, interval: str) -> str:
     return d.strftime("%Y-%m-%d") if interval == "1d" else d.isoformat(timespec="minutes")
 
 
-async def _load_intraday(symbol: str, interval: str) -> tuple[np.ndarray, datetime]:
-    """Real bars only, sourced the same way the live collector and backtest
-    are — `corpus.fetch_bars` (yfinance) + `store_bars`, never the daily
-    AV/Finnhub proxy, which has no intraday endpoint. Raises `CorpusError` if
-    a fresh fetch fails and nothing is stored yet; never fabricates intraday
-    data. Runs in a thread since `fetch_bars` is a blocking network call.
+def _train_bars(interval: str) -> int:
+    """The training window this interval is actually backtested at
+    (`forecasters.DEFAULT_TRAIN_BARS`) — serving must fit on the identical
+    window the reported accuracy was measured on, not on however much
+    history happens to be stored.
+    """
+    return DEFAULT_TRAIN_BARS.get(interval, FALLBACK_INTRADAY_TRAIN_BARS)
+
+
+async def _load_from_corpus(symbol: str, interval: str, period: str) -> list:
+    """Real bars only, sourced the same way the backtest and live collector
+    are — `corpus.fetch_bars` (yfinance) + `store_bars` — for both daily and
+    intraday prediction. Used instead of the Alpha Vantage/Finnhub proxy in
+    `providers.py`, whose daily endpoint defaults to its "compact" mode (last
+    100 points) and has no intraday endpoint at all; yfinance has neither
+    limit at the depths this app needs. Raises `CorpusError` if a fresh fetch
+    fails and nothing is stored yet; never fabricates data. Runs in a thread
+    since `fetch_bars` is a blocking network call. Returns the full stored
+    `PriceBar` series (not just closes) so callers can render a history line
+    from the identical source the forecast itself is fit on — mixing this
+    with `/api/history`'s AV/Finnhub-backed series risks two different
+    "current prices" on the same chart if one proxy is rate-limited.
     """
     def _fetch_and_store() -> list:
-        bars = fetch_bars(symbol, period="1d", interval=interval)
+        bars = fetch_bars(symbol, period=period, interval=interval)
         with Session(engine) as session:
             store_bars(session, bars)
             return load_series(session, symbol, interval)
 
-    series = await asyncio.to_thread(_fetch_and_store)
-    prices = np.array([b.close for b in series], dtype=float)
-    return prices, series[-1].ts
+    return await asyncio.to_thread(_fetch_and_store)
 
 
 async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") -> PredictionResult:
@@ -128,18 +155,20 @@ async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") ->
     if (hit := await cache.get(cache_key)) is not None:
         return hit
 
-    if interval == "1d":
-        # Raises UnknownSymbolError for unrecognised tickers rather than
-        # forecasting invented prices; the router turns that into a 404.
-        history, data_source = await providers.get_historical(symbol, TRAIN_DAYS)
-        prices = np.array([h.price for h in history], dtype=float)
-        last_ts = datetime.strptime(history[-1].date, "%Y-%m-%d")
-    else:
-        # Raises CorpusError (never fabricates) if intraday history can't be
-        # fetched or stored yet; the router turns that into a 503.
-        prices, last_ts = await _load_intraday(symbol, interval)
-        data_source = "live"
+    # Raises CorpusError (never fabricates) if history can't be fetched or
+    # stored yet; the router turns that into a 503. "2y" comfortably covers
+    # TRAIN_DAYS (300) for daily; intraday uses whatever's already collected.
+    period = "2y" if interval == "1d" else "1d"
+    series = await _load_from_corpus(symbol, interval, period)
+    train_bars = _train_bars(interval)
+    prices = np.array([b.close for b in series], dtype=float)[-train_bars:]
+    last_ts = series[-1].ts
+    data_source = "live"
     current_price = float(prices[-1])
+
+    # Same corpus the forecast is fit on, so the chart's history line and the
+    # forecast line never disagree about what "now" is worth.
+    history_bars = series[-min(train_bars, 30) :]
 
     # Which model actually serves this forecast — statistically proven better
     # than random-walk on pooled backtest + live-scored evidence, or
@@ -175,6 +204,10 @@ async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") ->
         horizon_days=horizon,
         trend=trend,
         accuracy=accuracy,
+        history=[
+            ChartData(date=_format_step(b.ts, interval), price=round(b.close, 2), volume=b.volume)
+            for b in history_bars
+        ],
         forecast=points,
         indicators=_compute_indicators(prices),
         data_source=data_source,
@@ -183,26 +216,34 @@ async def get_prediction(symbol: str, horizon: int = 7, interval: str = "1d") ->
     return result
 
 
-async def get_today_showcase(symbol: str, interval: str = "60m") -> TodayShowcase:
-    """One trading day at hourly resolution: bars collected so far, the
-    forecast for the remaining hours, and every prediction already labeled
-    against reality today — the visible form of the same selection loop
+async def get_today_showcase(symbol: str, interval: str = "60m", days: int = 1) -> TodayShowcase:
+    """Today's bars so far, an hourly forecast spanning `days` trading days
+    (1-7, most-detailed at 1), and every prediction already labeled against
+    reality today — the visible form of the same selection loop
     `get_prediction` uses.
     """
-    cache_key = f"today:{symbol.upper()}:{interval}"
+    days = min(max(days, 1), _MAX_WINDOW_DAYS)
+    cache_key = f"today:{symbol.upper()}:{interval}:{days}"
     if (hit := await cache.get(cache_key)) is not None:
         return hit
 
-    prices, last_ts = await _load_intraday(symbol, interval)
-
-    with Session(engine) as session:
-        series = load_series(session, symbol, interval)
+    series = await _load_from_corpus(symbol, interval, period="1d")
+    prices = np.array([b.close for b in series], dtype=float)[-_train_bars(interval) :]
+    last_ts = series[-1].ts
     today = series[-1].ts.date()
     todays_bars = [b for b in series if b.ts.date() == today]
 
-    close = last_ts.replace(hour=_MARKET_CLOSE_HOUR, minute=0, second=0, microsecond=0)
-    remaining = int((close - last_ts).total_seconds() // 3600)
-    horizon = min(max(remaining, 1), _MAX_TODAY_HORIZON)
+    # Bars already printed today, by wall-clock position in the session.
+    open_today = last_ts.replace(hour=_MARKET_OPEN[0], minute=_MARKET_OPEN[1], second=0, microsecond=0)
+    bars_so_far = int((last_ts - open_today).total_seconds() // 3600) + 1
+    remaining_today = max(_BARS_PER_DAY - bars_so_far, 0)
+    # If today's session is already over, "1 day" means the next full trading
+    # day rather than zero forecast points.
+    horizon = (
+        remaining_today + (days - 1) * _BARS_PER_DAY
+        if remaining_today > 0
+        else days * _BARS_PER_DAY
+    )
 
     with Session(engine) as session:
         model_name = select_model(session, horizon, interval=interval)

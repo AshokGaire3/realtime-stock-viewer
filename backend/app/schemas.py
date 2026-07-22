@@ -137,6 +137,11 @@ class PredictionResult(BaseModel):
     # not a "confidence" score: we report the error we observed, not a
     # self-assessment derived from the model's own fit.
     accuracy: ModelAccuracy | None = None
+    # Recent actual closes leading up to `current_price`, from the identical
+    # corpus the forecast is fit on — never a separately-sourced series, which
+    # could disagree with the forecast about what "now" is worth if that other
+    # source is rate-limited or falls back to synthetic data.
+    history: list[ChartData]
     forecast: list[PredictionPoint]
     indicators: Indicators
     # Whether the underlying history was real. A forecast fitted on synthetic

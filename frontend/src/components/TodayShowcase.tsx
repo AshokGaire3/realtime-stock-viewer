@@ -31,6 +31,7 @@ interface Row {
 }
 
 export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
+  const [days, setDays] = useState(1);
   const [data, setData] = useState<TodayShowcaseData | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState('');
@@ -41,7 +42,7 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
 
     const load = async () => {
       try {
-        const result = await financialApi.getTodayShowcase(symbol);
+        const result = await financialApi.getTodayShowcase(symbol, days);
         if (cancelled) return;
 
         const actualRows: Row[] = result.bars.map((bar) => ({ time: bar.date, actual: bar.price }));
@@ -78,14 +79,35 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [symbol]);
+  }, [symbol, days]);
+
+  const tickFormat = days > 1 ? 'MMM dd HH:mm' : 'HH:mm';
+
+  const daysSelector = (
+    <div className="flex gap-2">
+      {([1, 3, 7] as const).map((d) => (
+        <button
+          key={d}
+          onClick={() => setDays(d)}
+          className={`px-3 py-1 rounded-lg text-sm transition-colors ${
+            days === d ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+          }`}
+        >
+          {d}D
+        </button>
+      ))}
+    </div>
+  );
 
   if (loading) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-gray-400">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span>Loading today's forecast for {symbol}...</span>
+      <div className="space-y-6">
+        {daysSelector}
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span>Loading forecast for {symbol}...</span>
+          </div>
         </div>
       </div>
     );
@@ -93,13 +115,15 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
 
   if (error || !data) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 font-medium">{error}</p>
-          <p className="text-gray-500 text-sm mt-1">
-            No hourly data yet for {symbol} — it's collected by a scheduled job, not fetched on
-            demand.
-          </p>
+      <div className="space-y-6">
+        {daysSelector}
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 h-96 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-red-400 font-medium">{error}</p>
+            <p className="text-gray-500 text-sm mt-1">
+              No hourly data yet for {symbol} — collected on a schedule, not fetched on demand.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -107,13 +131,12 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
 
   return (
     <div className="space-y-6">
+      {daysSelector}
       <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-white">{symbol} — {data.trading_date}</h3>
-            {data.data_source === 'fallback' && (
-              <DemoBadge title="Forecast fitted on simulated demo prices — not a market signal" />
-            )}
+            {data.data_source === 'fallback' && <DemoBadge title="Simulated demo prices, not a market signal" />}
             <span className="text-xs text-gray-500">model: {data.model}</span>
           </div>
         </div>
@@ -126,7 +149,7 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
                 dataKey="time"
                 stroke="#9CA3AF"
                 fontSize={12}
-                tickFormatter={(value) => format(new Date(value), 'HH:mm')}
+                tickFormatter={(value) => format(new Date(value), tickFormat)}
               />
               <YAxis
                 stroke="#9CA3AF"
@@ -142,7 +165,7 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
                   color: '#F9FAFB',
                 }}
                 itemStyle={{ color: '#E5E7EB' }}
-                labelFormatter={(label) => format(new Date(label), 'HH:mm')}
+                labelFormatter={(label) => format(new Date(label), tickFormat)}
                 formatter={(value, name) => {
                   if (name === '95% confidence' && Array.isArray(value)) {
                     return [`$${value[0].toFixed(2)} – $${value[1].toFixed(2)}`, name];
@@ -187,16 +210,13 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-700">
-          <h4 className="text-sm font-semibold text-white">Today's predictions, labeled against reality</h4>
+          <h4 className="text-sm font-semibold text-white">Predictions, labeled against reality</h4>
           <p className="text-xs text-gray-500 mt-1">
-            Every hourly forecast this model made today, and what actually happened once that hour
-            closed — this is the evidence that feeds back into which model gets served next.
+            Each hourly forecast today vs. what actually happened — feeds back into model selection.
           </p>
         </div>
         {data.scored.length === 0 ? (
-          <p className="px-6 py-4 text-sm text-gray-500">
-            No predictions logged yet today — the collector hasn't ticked since the last bar closed.
-          </p>
+          <p className="px-6 py-4 text-sm text-gray-500">No predictions logged yet today.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -242,8 +262,7 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
       </div>
 
       <p className="text-xs text-gray-500">
-        {data.data_source === 'fallback' &&
-          "This forecast was fitted on simulated demo prices, so the numbers above describe mock data, not the market. "}
+        {data.data_source === 'fallback' && 'Simulated demo prices, not the market. '}
         {data.disclaimer}
       </p>
     </div>

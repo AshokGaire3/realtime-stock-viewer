@@ -18,8 +18,11 @@ async def predict(
 
 
 @router.get("/predict/today", response_model=TodayShowcase)
-async def predict_today(symbol: str = Query(..., min_length=1)) -> TodayShowcase:
-    """Today's hourly bars so far, the forecast for the rest of the trading
-    day, and every prediction already labeled against reality today.
+async def predict_today(
+    symbol: str = Query(..., min_length=1),
+    days: int = Query(1, ge=1, le=7),
+) -> TodayShowcase:
+    """Today's hourly bars so far, an hourly forecast spanning `days` trading
+    days, and every prediction already labeled against reality today.
     """
-    return await predictions.get_today_showcase(symbol)
+    return await predictions.get_today_showcase(symbol, days=days)

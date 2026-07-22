@@ -102,7 +102,12 @@ def score_pending(session: Session, symbol: str, interval: str = "1d") -> int:
         point.in_band = bool(point.lower <= actual <= point.upper)
         # Sign of the predicted move vs the sign of the real move. Flat
         # predictions (random-walk) never "hit" — correct: no call, no credit.
-        point.direction_hit = bool(np.sign(pred - anchor) == np.sign(actual - anchor))
+        # `pred` is stored rounded to 4dp but `anchor` is not, so a flat
+        # forecast (pred == anchor before rounding) can come out as a tiny
+        # nonzero residual with an essentially random sign. Round anchor to
+        # the same precision before diffing so a genuinely flat call reads as
+        # sign 0, not noise.
+        point.direction_hit = bool(np.sign(pred - round(anchor, 4)) == np.sign(actual - anchor))
         session.add(point)
         scored += 1
 
