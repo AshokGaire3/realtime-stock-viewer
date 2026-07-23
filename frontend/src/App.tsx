@@ -310,19 +310,11 @@ function App() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-gray-800 border-t border-gray-700 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-gray-400 space-y-2">
-            <p className="text-lg font-semibold text-white">StockLab — Live Markets & ML Price Predictions</p>
-            <p className="text-sm">
-              Real-time market data powered by Alpha Vantage, Finnhub, and CoinGecko APIs
-            </p>
-            <div className="flex justify-center items-center gap-4 text-xs">
-              <ApiStatus liveCount={liveCount} total={stocks.length} lastUpdated={lastUpdated} error={apiError} />
-            </div>
-            <p className="text-xs text-gray-500 pt-2">
-              * This dashboard is for educational purposes. Not financial advice.
-            </p>
+      <footer className="border-t border-gray-700 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs text-gray-500">
+            <p>© {new Date().getFullYear()} StockLab. Market data via Alpha Vantage, Finnhub & CoinGecko.</p>
+            <p>Not financial advice.</p>
           </div>
         </div>
       </footer>
