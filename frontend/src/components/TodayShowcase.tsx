@@ -14,7 +14,6 @@ import { format } from 'date-fns';
 import { Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { TodayShowcase as TodayShowcaseData } from '../types/financial';
 import { financialApi } from '../services/financialApi';
-import { DemoBadge } from './DemoBadge';
 
 const ACTUAL = '#3B82F6';
 const FORECAST = '#EC4899';
@@ -140,7 +139,6 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-white">{symbol} — {data.trading_date}</h3>
-            {data.data_source === 'fallback' && <DemoBadge title="Simulated demo prices, not a market signal" />}
             <span className="text-xs text-gray-500">model: {data.model}</span>
           </div>
         </div>
@@ -266,7 +264,6 @@ export const TodayShowcase: React.FC<{ symbol: string }> = ({ symbol }) => {
       </div>
 
       <p className="text-xs text-gray-500">
-        {data.data_source === 'fallback' && 'Simulated demo prices, not the market. '}
         {data.disclaimer}
       </p>
     </div>

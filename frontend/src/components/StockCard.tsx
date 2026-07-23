@@ -1,7 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from 'lucide-react';
 import { StockData } from '../types/financial';
-import { DemoBadge } from './DemoBadge';
 import { rangePosition } from '../utils/range';
 
 interface StockCardProps {
@@ -29,7 +28,6 @@ export const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-xl font-bold text-white">{stock.symbol}</h3>
-            {stock.source === 'fallback' && <DemoBadge />}
           </div>
           <p className="text-gray-400 text-sm">{stock.name}</p>
         </div>

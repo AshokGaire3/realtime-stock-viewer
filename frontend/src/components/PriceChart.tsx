@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChartData, Source } from '../types/financial';
+import { ChartData } from '../types/financial';
 import { financialApi } from '../services/financialApi';
 import { format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
-import { DemoBadge } from './DemoBadge';
 
 interface PriceChartProps {
   symbol: string;
@@ -13,7 +12,6 @@ interface PriceChartProps {
 
 export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => {
   const [data, setData] = useState<ChartData[]>([]);
-  const [source, setSource] = useState<Source>('live');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   // `days` seeds the range; the 7D/30D/90D buttons then drive it.
@@ -26,7 +24,6 @@ export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => 
       try {
         const series = await financialApi.getHistory(symbol, range);
         setData(series.points);
-        setSource(series.source);
       } catch (err) {
         console.error('Failed to fetch chart data:', err);
         setError(err instanceof Error ? err.message : 'Failed to load chart');
@@ -77,7 +74,6 @@ export const PriceChart: React.FC<PriceChartProps> = ({ symbol, days = 30 }) => 
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-3">
           <h3 className="text-xl font-bold text-white">{symbol} Price Chart</h3>
-          {source === 'fallback' && <DemoBadge />}
         </div>
         <div className="flex gap-2">
           {[7, 30, 90].map((period) => (

@@ -14,7 +14,6 @@ import { format } from 'date-fns';
 import { Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { PredictionResult } from '../types/financial';
 import { financialApi } from '../services/financialApi';
-import { DemoBadge } from './DemoBadge';
 import { TodayShowcase } from './TodayShowcase';
 
 // Actual vs forecast is a categorical pair, validated for CVD separation against
@@ -156,9 +155,6 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-white">{symbol} Forecast</h3>
-            {prediction.data_source === 'fallback' && (
-              <DemoBadge title="Simulated demo prices, not a market signal" />
-            )}
             <span className="text-xs text-gray-500">model: {prediction.model}</span>
           </div>
           <div className="flex gap-2">
@@ -299,7 +295,6 @@ export const PredictionPanel: React.FC<{ symbol: string }> = ({ symbol }) => {
       )}
 
       <p className="text-xs text-gray-500">
-        {prediction.data_source === 'fallback' && 'Simulated demo prices, not the market. '}
         {!prediction.accuracy && 'Accuracy not yet measured for this model. '}
         {prediction.disclaimer}
       </p>
